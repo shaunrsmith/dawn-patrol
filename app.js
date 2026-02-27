@@ -39,7 +39,7 @@
     // ============================================
     const API = {
         openMeteo: (lat, lng) =>
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,relative_humidity_2m,cloud_cover,weather_code,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=2`,
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,relative_humidity_2m,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,weather_code,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=2`,
 
         sunrise: (lat, lng, date) =>
             `https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lng}&date=${date}&formatted=0`,
@@ -302,38 +302,72 @@
         const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
 
         if (hourIndex === -1) {
-            return { score: 0, details: 'No data' };
+            return { score: 0, details: 'No data', verdict: 'No data available' };
         }
 
         const cloudCover = weather.hourly.cloud_cover[hourIndex];
+        const lowClouds = weather.hourly.cloud_cover_low?.[hourIndex] || 0;
+        const midClouds = weather.hourly.cloud_cover_mid?.[hourIndex] || 0;
+        const highClouds = weather.hourly.cloud_cover_high?.[hourIndex] || 0;
         const humidity = weather.hourly.relative_humidity_2m[hourIndex];
 
-        // Cloud cover score (25-60% is optimal)
-        let cloudScore;
-        if (cloudCover < 10) cloudScore = 3;
-        else if (cloudCover < 25) cloudScore = 6;
-        else if (cloudCover <= 60) cloudScore = 10;
-        else if (cloudCover <= 80) cloudScore = 5;
-        else cloudScore = 2;
+        // Sunrise photo scoring based on cloud layers:
+        // - High clouds (cirrus): GREAT for color, catch light beautifully
+        // - Mid clouds (alto): GOOD for color, dramatic skies
+        // - Low clouds (stratus/fog): BAD, block the sun
+        // - Clear sky: OK but boring, no clouds to catch color
 
-        // Humidity score (lower is better)
-        let humidityScore;
-        if (humidity < 50) humidityScore = 10;
-        else if (humidity < 65) humidityScore = 7;
-        else if (humidity < 80) humidityScore = 4;
-        else humidityScore = 2;
+        let score = 5; // Base score
+        let verdict = '';
 
-        const finalScore = Math.round((cloudScore * 0.7) + (humidityScore * 0.3));
+        // High clouds are excellent (add up to 3 points)
+        if (highClouds >= 30 && highClouds <= 80) {
+            score += 3;
+        } else if (highClouds > 0 && highClouds < 30) {
+            score += 1;
+        }
 
-        // Verdict
-        let verdict;
-        if (finalScore >= 7) verdict = 'Good canvas for color';
-        else if (finalScore >= 5) verdict = 'Might get some color';
-        else verdict = 'Probably not worth the early alarm';
+        // Mid clouds are good (add up to 2 points)
+        if (midClouds >= 20 && midClouds <= 70) {
+            score += 2;
+        } else if (midClouds > 0 && midClouds < 20) {
+            score += 1;
+        }
+
+        // Low clouds are bad (subtract points)
+        if (lowClouds >= 80) {
+            score -= 4; // Heavy low overcast = no color
+        } else if (lowClouds >= 50) {
+            score -= 2;
+        } else if (lowClouds >= 30) {
+            score -= 1;
+        }
+
+        // Clear sky penalty (no clouds = no canvas for color)
+        if (cloudCover < 10) {
+            score -= 1;
+        }
+
+        // Clamp score
+        score = Math.min(10, Math.max(1, score));
+
+        // Generate verdict
+        if (lowClouds >= 80) {
+            verdict = 'Heavy low clouds will block color';
+        } else if (highClouds >= 30 || midClouds >= 30) {
+            verdict = 'Good cloud canvas for color';
+        } else if (cloudCover < 15) {
+            verdict = 'Clear sky - sunrise but no clouds for color';
+        } else {
+            verdict = 'Some potential for color';
+        }
 
         return {
-            score: Math.min(10, Math.max(1, finalScore)),
+            score,
             cloudCover,
+            lowClouds,
+            midClouds,
+            highClouds,
             humidity,
             verdict
         };
@@ -597,8 +631,9 @@
         // Photo card
         document.getElementById('photo-score').textContent = state.scores.photo;
         updateScoreColor('photo-card', state.scores.photo);
-        document.getElementById('photo-clouds').textContent = `Cloud cover: ${state.photoData.cloudCover}%`;
-        document.getElementById('photo-humidity').textContent = `Humidity: ${state.photoData.humidity}%`;
+        document.getElementById('photo-clouds').textContent =
+            `High: ${state.photoData.highClouds || 0}% | Mid: ${state.photoData.midClouds || 0}% | Low: ${state.photoData.lowClouds || 0}%`;
+        document.getElementById('photo-humidity').textContent = `Total cloud cover: ${state.photoData.cloudCover}%`;
         document.getElementById('photo-verdict').textContent = state.photoData.verdict;
 
         // Cycle card
