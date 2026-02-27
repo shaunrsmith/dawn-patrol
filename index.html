@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Dawn Patrol - Morning Activity Advisor</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon.svg">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <h1>Dawn Patrol</h1>
+            <p class="tagline">What should you do tomorrow morning?</p>
+        </header>
+
+        <main class="main">
+            <!-- Loading State -->
+            <section id="loading" class="loading-section">
+                <div class="loading-spinner"></div>
+                <p>Checking tomorrow's conditions...</p>
+            </section>
+
+            <!-- Error State -->
+            <section id="error" class="error-section" style="display: none;">
+                <p class="error-message"></p>
+                <button class="btn-primary" onclick="location.reload()">Try Again</button>
+            </section>
+
+            <!-- Main Content -->
+            <section id="content" class="content-section" style="display: none;">
+                <!-- Tomorrow Header -->
+                <div class="tomorrow-header">
+                    <h2>Tomorrow Morning</h2>
+                    <div class="sunrise-time">
+                        <span class="sunrise-icon">&#9788;</span>
+                        <span id="sunrise-time">--:--</span>
+                    </div>
+                </div>
+
+                <!-- Top Recommendation -->
+                <div class="recommendation-card" id="recommendation">
+                    <div class="rec-label">RECOMMENDATION</div>
+                    <div class="rec-activity" id="rec-activity">Loading...</div>
+                    <div class="rec-detail" id="rec-detail"></div>
+                </div>
+
+                <!-- Conditions Summary -->
+                <div class="conditions-summary" id="conditions-summary">
+                    <div class="condition-item">
+                        <span class="condition-icon">&#127777;</span>
+                        <div class="condition-data">
+                            <span class="condition-label">Air</span>
+                            <span class="condition-value" id="summary-air-temp">--°F</span>
+                        </div>
+                    </div>
+                    <div class="condition-item">
+                        <span class="condition-icon">&#127754;</span>
+                        <div class="condition-data">
+                            <span class="condition-label">Water</span>
+                            <span class="condition-value" id="summary-water-temp">--°F</span>
+                        </div>
+                    </div>
+                    <div class="condition-item tides-item">
+                        <span class="condition-icon">&#127754;</span>
+                        <div class="condition-data">
+                            <span class="condition-label">Ventnor Tides</span>
+                            <span class="condition-value" id="summary-tides">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activity Cards -->
+                <div class="activity-cards">
+                    <!-- Surfing Card -->
+                    <div class="activity-card" id="surf-card">
+                        <div class="card-header">
+                            <span class="card-icon">&#127940;</span>
+                            <span class="card-title">SURFING</span>
+                            <div class="card-score">
+                                <span class="score-value" id="surf-score">--</span>
+                                <span class="score-max">/10</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="card-detail" id="surf-best-spot">Best spot: --</div>
+                            <div class="card-detail" id="surf-conditions">--</div>
+                            <div class="card-detail" id="surf-tide">--</div>
+                            <div class="card-temps">
+                                <span id="surf-water-temp">Water: --</span>
+                                <span id="surf-air-temp">Air: --</span>
+                            </div>
+                            <div class="card-forecast" id="surf-forecast">--</div>
+                        </div>
+                        <div class="card-footer">
+                            <div class="surf-links">
+                                <a href="https://www.surfline.com/surf-report/ventnor-pier/5842041f4e65fad6a7708a09" target="_blank" class="external-link">Surfline</a>
+                                <a href="https://www.surfcaptain.com/forecast/atlantic-city-nj" target="_blank" class="external-link">Surf Captain</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sunrise Photos Card -->
+                    <div class="activity-card" id="photo-card">
+                        <div class="card-header">
+                            <span class="card-icon">&#128247;</span>
+                            <span class="card-title">SUNRISE PHOTOS</span>
+                            <div class="card-score">
+                                <span class="score-value" id="photo-score">--</span>
+                                <span class="score-max">/10</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="card-detail" id="photo-clouds">Cloud cover: --%</div>
+                            <div class="card-detail" id="photo-humidity">Humidity: --%</div>
+                            <div class="card-detail" id="photo-verdict">--</div>
+                        </div>
+                    </div>
+
+                    <!-- Cycling Card -->
+                    <div class="activity-card" id="cycle-card">
+                        <div class="card-header">
+                            <span class="card-icon">&#128690;</span>
+                            <span class="card-title">CYCLING</span>
+                            <div class="card-score">
+                                <span class="score-value" id="cycle-score">--</span>
+                                <span class="score-max">/10</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="card-detail" id="cycle-wind">Wind: -- mph</div>
+                            <div class="card-detail" id="cycle-temp">Temperature: --</div>
+                            <div class="card-direction" id="cycle-direction">
+                                <span class="direction-icon">&#8594;</span>
+                                <span class="direction-text">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Last Updated -->
+                <div class="last-updated">
+                    Last updated: <span id="last-updated">--</span>
+                </div>
+
+                <!-- Refresh Button -->
+                <button class="btn-refresh" onclick="refreshData()">
+                    Refresh Data
+                </button>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>Ventnor, NJ | Built for dawn patrol decisions</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

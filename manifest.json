@@ -1,0 +1,18 @@
+{
+    "name": "Dawn Patrol - Morning Activity Advisor",
+    "short_name": "Dawn Patrol",
+    "description": "Helps you decide: surf, cycle, or sunrise photos tomorrow morning",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0f0f1a",
+    "theme_color": "#1a1a2e",
+    "orientation": "portrait",
+    "icons": [
+        {
+            "src": "icons/icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}
