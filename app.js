@@ -353,7 +353,7 @@
         const windSpeed = weather.hourly.wind_speed_10m[hourIndex];
         const windDirection = weather.hourly.wind_direction_10m[hourIndex];
         const temp = weather.hourly.temperature_2m[hourIndex];
-        const weatherCode = weather.hourly.weather_code[hourIndex];
+        const cloudCover = weather.hourly.cloud_cover?.[hourIndex] || 0;
 
         // Wind speed score (>15 mph is a no-go)
         let windScore;
@@ -362,12 +362,11 @@
         else if (windSpeed <= 15) windScore = 5;
         else windScore = 1; // >15 mph = no go
 
-        // Weather score (based on WMO codes)
+        // Weather score (based on cloud cover since ECMWF doesn't have weather codes)
         let weatherScore;
-        if (weatherCode <= 3) weatherScore = 10; // Clear to partly cloudy
-        else if (weatherCode <= 49) weatherScore = 7; // Fog, drizzle
-        else if (weatherCode <= 59) weatherScore = 3; // Rain
-        else weatherScore = 0; // Heavy rain, snow, etc.
+        if (cloudCover <= 30) weatherScore = 10; // Clear to partly cloudy
+        else if (cloudCover <= 70) weatherScore = 7; // Partly cloudy
+        else weatherScore = 5; // Cloudy but rideable
 
         // Temperature score
         let tempScore;
