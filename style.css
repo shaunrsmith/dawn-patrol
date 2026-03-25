@@ -326,6 +326,35 @@ body {
     border-top: 1px solid var(--border-color);
 }
 
+/* Fish Species Tags */
+.fish-species {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.fish-species-tag {
+    display: inline-block;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.fish-species-tag.species-ideal {
+    background: rgba(46, 204, 113, 0.15);
+    color: var(--accent-green);
+    border-color: rgba(46, 204, 113, 0.3);
+}
+
+.fish-location {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
 /* Cycling Direction */
 .card-direction {
     display: flex;

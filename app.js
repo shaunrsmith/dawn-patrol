@@ -1,6 +1,6 @@
 // Dawn Patrol - Morning Activity Advisor
-// Helps decide: Surf, Cycle, or Sunrise Photos
-// Version 3.0 - Using Open-Meteo Marine for wave data
+// Helps decide: Surf, Fish, Cycle, or Sunrise Photos
+// Version 4.0 - Added fishing score with solunar, tides, and barometric pressure
 
 (function() {
     'use strict';
@@ -40,7 +40,7 @@
     const API = {
         // Using ECMWF model - generally most accurate global model
         openMeteo: (lat, lng) =>
-            `https://api.open-meteo.com/v1/ecmwf?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=2`,
+            `https://api.open-meteo.com/v1/ecmwf?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=2`,
 
         sunrise: (lat, lng, date) =>
             `https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lng}&date=${date}&formatted=0`,
@@ -49,9 +49,9 @@
         noaaTides: (beginDate, endDate) =>
             `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?begin_date=${beginDate}&end_date=${endDate}&station=8534720&product=predictions&datum=MLLW&time_zone=lst_ldt&interval=hilo&units=english&format=json`,
 
-        // NOAA water temp - Cape May station 8536110 (has water temp sensors)
+        // NOAA water temp - Atlantic City Steel Pier station 8534720
         noaaWaterTemp: () =>
-            `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=8536110&product=water_temperature&units=english&time_zone=lst_ldt&format=json`,
+            `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station=8534720&product=water_temperature&units=english&time_zone=lst_ldt&format=json`,
 
         // Open-Meteo Marine API for wave data (free, no CORS issues)
         marineWaves: (lat, lng) =>
@@ -69,6 +69,7 @@
         waterTempData: null,
         scores: {
             surf: 0,
+            fish: 0,
             photo: 0,
             cycle: 0
         },
@@ -342,6 +343,179 @@
         };
     }
 
+    // ============================================
+    // Fishing Score
+    // ============================================
+
+    // NJ Shore species calendar: { months (1-indexed), idealWaterTemp [min, max] }
+    const FISH_SPECIES = [
+        { name: 'Striped Bass', months: [3,4,5,6,10,11,12], temp: [50, 65], emoji: '🐟' },
+        { name: 'Bluefish', months: [5,6,7,8,9,10,11], temp: [60, 72], emoji: '🐟' },
+        { name: 'Fluke', months: [4,5,6,7,8,9,10], temp: [55, 70], emoji: '🐟' },
+        { name: 'Weakfish', months: [5,6,7,8,9], temp: [58, 68], emoji: '🐟' },
+        { name: 'Black Drum', months: [4,5,6], temp: [55, 70], emoji: '🥁' },
+        { name: 'Tautog', months: [3,4,5,10,11,12], temp: [50, 60], emoji: '🐟' },
+        { name: 'Kingfish', months: [6,7,8,9,10], temp: [60, 75], emoji: '👑' },
+    ];
+
+    function getMoonPhase(date) {
+        // Calculate moon phase (0 = new moon, 0.5 = full moon)
+        // Based on a known new moon: Jan 6, 2000 18:14 UTC
+        const knownNew = new Date(Date.UTC(2000, 0, 6, 18, 14, 0));
+        const synodicMonth = 29.53058868;
+        const daysSinceNew = (date.getTime() - knownNew.getTime()) / (1000 * 60 * 60 * 24);
+        const phase = ((daysSinceNew % synodicMonth) + synodicMonth) % synodicMonth;
+        return phase / synodicMonth; // 0-1
+    }
+
+    function getMoonPhaseName(phase) {
+        if (phase < 0.0625 || phase >= 0.9375) return 'New Moon';
+        if (phase < 0.1875) return 'Waxing Crescent';
+        if (phase < 0.3125) return 'First Quarter';
+        if (phase < 0.4375) return 'Waxing Gibbous';
+        if (phase < 0.5625) return 'Full Moon';
+        if (phase < 0.6875) return 'Waning Gibbous';
+        if (phase < 0.8125) return 'Last Quarter';
+        return 'Waning Crescent';
+    }
+
+    function calculateFishScore(weather, noaaTides, waterTempData) {
+        const tomorrow = getTomorrowDate();
+        const tomorrowDate = new Date(tomorrow + 'T00:00:00');
+        const month = tomorrowDate.getMonth() + 1; // 1-indexed
+
+        // --- Moon/Solunar Score (25%) ---
+        const moonPhase = getMoonPhase(tomorrowDate);
+        const moonName = getMoonPhaseName(moonPhase);
+        // New moon (0) and full moon (0.5) are best for fishing
+        // Distance from nearest peak (0 or 0.5)
+        const distFromPeak = Math.min(moonPhase, Math.abs(moonPhase - 0.5), 1 - moonPhase);
+        // 0 = at peak (best), 0.25 = quarter moon (worst)
+        let solunarScore = Math.round(10 - (distFromPeak / 0.25) * 8);
+        solunarScore = Math.max(2, Math.min(10, solunarScore));
+
+        // --- Tide Score (25%) ---
+        // Moving water is best - check if morning window has a tide change
+        let tideScore = 5; // default
+        let tideDetail = 'Check tides';
+        if (noaaTides && noaaTides.predictions) {
+            const morningTides = [];
+            for (const pred of noaaTides.predictions) {
+                if (pred.type !== 'H' && pred.type !== 'L') continue;
+                const [dateStr] = pred.t.split(' ');
+                if (dateStr === tomorrow) {
+                    const hour = parseInt(pred.t.split(' ')[1].split(':')[0], 10);
+                    if (hour >= 4 && hour <= 11) {
+                        morningTides.push({ type: pred.type, hour });
+                    }
+                }
+            }
+            // Tide change during fishing window (5-9 AM) = great
+            if (morningTides.some(t => t.hour >= 5 && t.hour <= 9)) {
+                tideScore = 10;
+                tideDetail = 'Tide change during morning - moving water';
+            } else if (morningTides.length > 0) {
+                tideScore = 7;
+                tideDetail = 'Tide change near morning window';
+            } else {
+                tideScore = 4;
+                tideDetail = 'Slack water in morning';
+            }
+        }
+
+        // --- Barometric Pressure Score (20%) ---
+        let pressureScore = 5;
+        let pressureTrend = 'Unknown';
+        if (weather && weather.hourly && weather.hourly.pressure_msl) {
+            const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
+            if (hourIndex > 5) {
+                const currentPressure = weather.hourly.pressure_msl[hourIndex];
+                const priorPressure = weather.hourly.pressure_msl[hourIndex - 6]; // 6 hours before
+                const change = currentPressure - priorPressure;
+                // Falling pressure = fish feed more actively
+                if (change < -2) { pressureScore = 10; pressureTrend = 'Falling'; }
+                else if (change < -0.5) { pressureScore = 8; pressureTrend = 'Slowly falling'; }
+                else if (change <= 0.5) { pressureScore = 6; pressureTrend = 'Steady'; }
+                else if (change <= 2) { pressureScore = 4; pressureTrend = 'Rising'; }
+                else { pressureScore = 2; pressureTrend = 'Rapidly rising'; }
+            }
+        }
+
+        // --- Wind Score (15%) ---
+        let windScore = 5;
+        let windSpeed = 0;
+        if (weather && weather.hourly) {
+            const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
+            if (hourIndex !== -1) {
+                windSpeed = weather.hourly.wind_speed_10m[hourIndex] || 0;
+                const windGusts = weather.hourly.wind_gusts_10m?.[hourIndex] || 0;
+                // Light wind best for pier fishing
+                if (windSpeed < 8) windScore = 10;
+                else if (windSpeed < 12) windScore = 7;
+                else if (windSpeed < 18) windScore = 4;
+                else windScore = 2;
+                // Heavy gusts penalize
+                if (windGusts > 30) windScore = Math.min(windScore, 2);
+            }
+        }
+
+        // --- Water Temp / Species Score (15%) ---
+        let waterTemp = null;
+        let speciesScore = 5;
+        const activeSpecies = [];
+
+        // Get current species for this month
+        const inSeasonSpecies = FISH_SPECIES.filter(s => s.months.includes(month));
+
+        if (waterTempData && waterTempData.data && waterTempData.data.length > 0) {
+            waterTemp = parseFloat(waterTempData.data[0].v);
+
+            // Score based on how many species are in their ideal temp range
+            let tempMatches = 0;
+            for (const species of inSeasonSpecies) {
+                const inRange = waterTemp >= species.temp[0] && waterTemp <= species.temp[1];
+                const nearRange = waterTemp >= species.temp[0] - 5 && waterTemp <= species.temp[1] + 5;
+                if (inRange) {
+                    activeSpecies.push({ ...species, status: 'ideal' });
+                    tempMatches += 2;
+                } else if (nearRange) {
+                    activeSpecies.push({ ...species, status: 'possible' });
+                    tempMatches += 1;
+                }
+            }
+            speciesScore = Math.min(10, Math.max(2, Math.round(tempMatches * 1.5)));
+        } else {
+            // No water temp - just list in-season species
+            for (const species of inSeasonSpecies) {
+                activeSpecies.push({ ...species, status: 'in-season' });
+            }
+        }
+
+        // --- Final Score ---
+        const finalScore = Math.round(
+            (solunarScore * 0.25) +
+            (tideScore * 0.25) +
+            (pressureScore * 0.20) +
+            (windScore * 0.15) +
+            (speciesScore * 0.15)
+        );
+
+        return {
+            score: Math.min(10, Math.max(1, finalScore)),
+            moonPhase: moonName,
+            solunarScore,
+            tideScore,
+            tideDetail,
+            pressureScore,
+            pressureTrend,
+            windScore,
+            windSpeed: Math.round(windSpeed),
+            speciesScore,
+            waterTemp: waterTemp ? Math.round(waterTemp) : null,
+            activeSpecies,
+        };
+    }
+
     function calculateCycleScore(weather) {
         const tomorrow = getTomorrowDate();
         const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
@@ -415,12 +589,13 @@
         };
     }
 
-    function getRecommendation(scores, surfScoreData, cycleData) {
-        const { surf, photo, cycle } = scores;
+    function getRecommendation(scores, surfScoreData, fishData, cycleData) {
+        const { surf, fish, photo, cycle } = scores;
 
         // Find best activity
         const activities = [
             { name: 'surf', score: surf, label: 'GO SURF' },
+            { name: 'fish', score: fish, label: 'GO FISHING' },
             { name: 'photo', score: photo, label: 'SUNRISE PHOTOS' },
             { name: 'cycle', score: cycle, label: 'GO CYCLING' }
         ];
@@ -432,6 +607,9 @@
         let detail = '';
         if (best.name === 'surf' && surfScoreData) {
             detail = surfScoreData.details;
+        } else if (best.name === 'fish' && fishData) {
+            const topSpecies = fishData.activeSpecies.filter(s => s.status === 'ideal').map(s => s.name);
+            detail = topSpecies.length > 0 ? topSpecies.join(', ') + ' in range' : fishData.tideDetail;
         } else if (best.name === 'cycle' && cycleData.directionText) {
             detail = cycleData.directionText;
         } else if (best.name === 'photo') {
@@ -449,6 +627,7 @@
 
         const icons = {
             surf: '&#127940;',
+            fish: '&#127907;',
             photo: '&#128247;',
             cycle: '&#128690;'
         };
@@ -502,6 +681,11 @@
         state.scores.surf = surfScoreData.score;
         state.surfScoreData = surfScoreData;
 
+        // Calculate fish score
+        const fishData = calculateFishScore(state.weather, state.noaaTides, state.waterTempData);
+        state.scores.fish = fishData.score;
+        state.fishData = fishData;
+
         // Calculate photo score
         const photoData = calculatePhotoScore(state.weather, state.sunrise);
         state.scores.photo = photoData.score;
@@ -513,7 +697,7 @@
         state.cycleData = cycleData;
 
         // Get recommendation
-        state.recommendation = getRecommendation(state.scores, surfScoreData, cycleData);
+        state.recommendation = getRecommendation(state.scores, surfScoreData, fishData, cycleData);
     }
 
     // ============================================
@@ -599,6 +783,38 @@
             // Show wave breakdown instead of forecaster headline
             const breakdown = `Height: ${state.surfScoreData.heightScore}/10 | Period: ${state.surfScoreData.periodScore}/10 | Wind: ${state.surfScoreData.windScore}/10`;
             document.getElementById('surf-forecast').textContent = breakdown;
+        }
+
+        // Fish card
+        document.getElementById('fish-score').textContent = state.scores.fish;
+        updateScoreColor('fish-card', state.scores.fish);
+        if (state.fishData) {
+            document.getElementById('fish-moon').textContent = `Moon: ${state.fishData.moonPhase}`;
+            document.getElementById('fish-tide').textContent = state.fishData.tideDetail;
+            document.getElementById('fish-pressure').textContent =
+                `Pressure: ${state.fishData.pressureTrend}`;
+            document.getElementById('fish-wind').textContent =
+                `Wind: ${state.fishData.windSpeed} mph`;
+            if (state.fishData.waterTemp) {
+                document.getElementById('fish-water-temp').textContent =
+                    `Water: ${state.fishData.waterTemp}°F`;
+            }
+            // Species list
+            const speciesList = document.getElementById('fish-species-list');
+            speciesList.innerHTML = '';
+            if (state.fishData.activeSpecies.length > 0) {
+                for (const species of state.fishData.activeSpecies) {
+                    const span = document.createElement('span');
+                    span.className = 'fish-species-tag' + (species.status === 'ideal' ? ' species-ideal' : '');
+                    span.textContent = species.name;
+                    speciesList.appendChild(span);
+                }
+            } else {
+                speciesList.textContent = 'Slow season';
+            }
+            // Score breakdown
+            document.getElementById('fish-breakdown').textContent =
+                `Moon: ${state.fishData.solunarScore}/10 | Tide: ${state.fishData.tideScore}/10 | Pressure: ${state.fishData.pressureScore}/10`;
         }
 
         // Photo card
