@@ -40,7 +40,7 @@
     const API = {
         // Using ECMWF model - generally most accurate global model
         openMeteo: (lat, lng) =>
-            `https://api.open-meteo.com/v1/ecmwf?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=2`,
+            `https://api.open-meteo.com/v1/ecmwf?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=2`,
 
         sunrise: (lat, lng, date) =>
             `https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lng}&date=${date}&formatted=0`,
@@ -351,6 +351,7 @@
         }
 
         const windSpeed = weather.hourly.wind_speed_10m[hourIndex];
+        const windGusts = weather.hourly.wind_gusts_10m?.[hourIndex] || 0;
         const windDirection = weather.hourly.wind_direction_10m[hourIndex];
         const temp = weather.hourly.temperature_2m[hourIndex];
         const cloudCover = weather.hourly.cloud_cover?.[hourIndex] || 0;
@@ -361,6 +362,9 @@
         else if (windSpeed < 12) windScore = 8;
         else if (windSpeed <= 15) windScore = 5;
         else windScore = 1; // >15 mph = no go
+
+        // Gusts above 26 mph override to no-go
+        if (windGusts > 26) windScore = 1;
 
         // Weather score (based on cloud cover since ECMWF doesn't have weather codes)
         let weatherScore;
@@ -402,6 +406,7 @@
         return {
             score: Math.min(10, Math.max(1, finalScore)),
             windSpeed: Math.round(windSpeed),
+            windGusts: Math.round(windGusts),
             windDirection: normalizedDir,
             windCardinal: degreesToCardinal(normalizedDir),
             temp: Math.round(temp),
@@ -607,7 +612,8 @@
         document.getElementById('cycle-score').textContent = state.scores.cycle;
         updateScoreColor('cycle-card', state.scores.cycle);
         document.getElementById('cycle-wind').textContent =
-            `Wind: ${state.cycleData.windSpeed} mph ${state.cycleData.windCardinal}`;
+            `Wind: ${state.cycleData.windSpeed} mph ${state.cycleData.windCardinal}` +
+            (state.cycleData.windGusts ? ` (gusts ${state.cycleData.windGusts} mph)` : '');
         document.getElementById('cycle-temp').textContent = `Temperature: ${state.cycleData.temp}°F`;
         document.querySelector('.direction-text').textContent = state.cycleData.directionText;
 
