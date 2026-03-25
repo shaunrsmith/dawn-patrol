@@ -40,7 +40,7 @@
     const API = {
         // Using ECMWF model - generally most accurate global model
         openMeteo: (lat, lng) =>
-            `https://api.open-meteo.com/v1/ecmwf?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/New_York&forecast_days=2`,
+            `https://api.open-meteo.com/v1/ecmwf?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,apparent_temperature,cloud_cover,precipitation,snowfall,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/New_York&forecast_days=2`,
 
         sunrise: (lat, lng, date) =>
             `https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lng}&date=${date}&formatted=0`,
@@ -129,6 +129,44 @@
             }
         }
         return -1;
+    }
+
+    function getMorningWeatherCondition(weather) {
+        // Determine precipitation and weather conditions for tomorrow morning
+        const tomorrow = getTomorrowDate();
+        const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
+        if (hourIndex === -1) return { precipitation: 0, snowfall: 0, feelsLike: null, condition: 'Unknown' };
+
+        const precip = weather.hourly.precipitation?.[hourIndex] || 0;
+        const snow = weather.hourly.snowfall?.[hourIndex] || 0;
+        const feelsLike = weather.hourly.apparent_temperature?.[hourIndex] || null;
+        const cloudCover = weather.hourly.cloud_cover?.[hourIndex] || 0;
+        const windSpeed = weather.hourly.wind_speed_10m?.[hourIndex] || 0;
+
+        // Check multiple morning hours for precip (6-9 AM)
+        let totalPrecip = 0;
+        let totalSnow = 0;
+        for (let i = hourIndex; i < Math.min(hourIndex + 4, weather.hourly.time.length); i++) {
+            totalPrecip += weather.hourly.precipitation?.[i] || 0;
+            totalSnow += weather.hourly.snowfall?.[i] || 0;
+        }
+
+        let condition;
+        if (totalSnow > 0.1) condition = 'Snow';
+        else if (totalPrecip > 0.2) condition = 'Rain';
+        else if (totalPrecip > 0.05) condition = 'Light Rain';
+        else if (cloudCover > 80) condition = 'Overcast';
+        else if (cloudCover > 50) condition = 'Partly Cloudy';
+        else condition = 'Clear';
+
+        return {
+            precipitation: totalPrecip,
+            snowfall: totalSnow,
+            feelsLike: feelsLike !== null ? Math.round(feelsLike) : null,
+            condition,
+            isWet: totalPrecip > 0.05 || totalSnow > 0.1,
+            isBadWeather: totalPrecip > 0.2 || totalSnow > 0.1 || windSpeed > 25
+        };
     }
 
     // ============================================
@@ -528,6 +566,7 @@
         const windGusts = weather.hourly.wind_gusts_10m?.[hourIndex] || 0;
         const windDirection = weather.hourly.wind_direction_10m[hourIndex];
         const temp = weather.hourly.temperature_2m[hourIndex];
+        const feelsLike = weather.hourly.apparent_temperature?.[hourIndex] || temp;
         const cloudCover = weather.hourly.cloud_cover?.[hourIndex] || 0;
 
         // Wind speed score (>15 mph is a no-go)
@@ -546,11 +585,12 @@
         else if (cloudCover <= 70) weatherScore = 7; // Partly cloudy
         else weatherScore = 5; // Cloudy but rideable
 
-        // Temperature score
+        // Temperature score - use feels-like for cycling comfort
         let tempScore;
-        if (temp >= 55 && temp <= 75) tempScore = 10;
-        else if ((temp >= 45 && temp < 55) || (temp > 75 && temp <= 85)) tempScore = 7;
-        else tempScore = 3;
+        if (feelsLike >= 55 && feelsLike <= 75) tempScore = 10;
+        else if ((feelsLike >= 45 && feelsLike < 55) || (feelsLike > 75 && feelsLike <= 85)) tempScore = 7;
+        else if (feelsLike >= 35 && feelsLike < 45) tempScore = 4;
+        else tempScore = 2;
 
         const finalScore = Math.round((windScore * 0.4) + (weatherScore * 0.3) + (tempScore * 0.3));
 
@@ -584,12 +624,13 @@
             windDirection: normalizedDir,
             windCardinal: degreesToCardinal(normalizedDir),
             temp: Math.round(temp),
+            feelsLike: Math.round(feelsLike),
             direction,
             directionText
         };
     }
 
-    function getRecommendation(scores, surfScoreData, fishData, cycleData) {
+    function getRecommendation(scores, surfScoreData, fishData, cycleData, weatherCondition) {
         const { surf, fish, photo, cycle } = scores;
 
         // Find best activity
@@ -602,26 +643,32 @@
 
         activities.sort((a, b) => b.score - a.score);
         const best = activities[0];
+        const runnerUp = activities[1];
 
-        // Build recommendation
-        let detail = '';
-        if (best.name === 'surf' && surfScoreData) {
-            detail = surfScoreData.details;
-        } else if (best.name === 'fish' && fishData) {
-            const topSpecies = fishData.activeSpecies.filter(s => s.status === 'ideal').map(s => s.name);
-            detail = topSpecies.length > 0 ? topSpecies.join(', ') + ' in range' : fishData.tideDetail;
-        } else if (best.name === 'cycle' && cycleData.directionText) {
-            detail = cycleData.directionText;
-        } else if (best.name === 'photo') {
-            detail = 'Get up early and find your spot';
+        // Build detail for best activity
+        function getDetail(activity) {
+            if (activity.name === 'surf' && surfScoreData) return surfScoreData.details;
+            if (activity.name === 'fish' && fishData) {
+                const topSpecies = fishData.activeSpecies.filter(s => s.status === 'ideal').map(s => s.name);
+                return topSpecies.length > 0 ? topSpecies.join(', ') + ' in range' : fishData.tideDetail;
+            }
+            if (activity.name === 'cycle' && cycleData.directionText) return cycleData.directionText;
+            if (activity.name === 'photo') return 'Arrive 20 min before sunrise';
+            return '';
         }
 
-        // If all scores are low, suggest sleeping in
-        if (best.score < 4) {
+        // Bad weather or all scores low = gym day
+        const isBadWeather = weatherCondition && weatherCondition.isBadWeather;
+        if (best.score < 4 || (isBadWeather && best.score < 6)) {
+            let gymDetail = weatherCondition ? weatherCondition.condition : 'Poor conditions';
+            if (weatherCondition && weatherCondition.feelsLike !== null) {
+                gymDetail += ` - Feels like ${weatherCondition.feelsLike}°F`;
+            }
             return {
-                activity: 'SLEEP IN',
-                detail: 'Nothing looks great tomorrow',
-                icon: '&#128564;'
+                activity: 'HIT THE GYM',
+                detail: gymDetail,
+                icon: '&#127947;',  // kettlebell/weight lifter
+                runnerUp: best.score >= 3 ? `Or: ${best.label} (${best.score}/10)` : null
             };
         }
 
@@ -632,10 +679,19 @@
             cycle: '&#128690;'
         };
 
+        let detail = getDetail(best);
+
+        // Runner-up suggestion if close in score
+        let runnerUpText = null;
+        if (runnerUp.score >= 5 && (best.score - runnerUp.score) <= 3) {
+            runnerUpText = `Also good: ${runnerUp.label} (${runnerUp.score}/10)`;
+        }
+
         return {
             activity: best.label,
             detail,
-            icon: icons[best.name]
+            icon: icons[best.name],
+            runnerUp: runnerUpText
         };
     }
 
@@ -676,6 +732,10 @@
     }
 
     function calculateAllScores() {
+        // Determine weather conditions first
+        const weatherCondition = state.weather ? getMorningWeatherCondition(state.weather) : null;
+        state.weatherCondition = weatherCondition;
+
         // Calculate surf score using Open-Meteo marine data
         const surfScoreData = calculateSurfScore(state.marineData, state.weather);
         state.scores.surf = surfScoreData.score;
@@ -696,8 +756,24 @@
         state.scores.cycle = cycleData.score;
         state.cycleData = cycleData;
 
+        // Apply precipitation penalties to outdoor activities
+        if (weatherCondition && weatherCondition.isWet) {
+            const penalty = weatherCondition.condition === 'Snow' ? 6 :
+                            weatherCondition.condition === 'Rain' ? 5 : 2;
+            // Cycling is most affected by rain/snow
+            state.scores.cycle = Math.max(1, state.scores.cycle - penalty);
+            // Photo scoring already handles clouds, but rain kills it
+            state.scores.photo = Math.max(1, state.scores.photo - penalty);
+            // Fishing in light rain is fine, heavier rain less so
+            state.scores.fish = Math.max(1, state.scores.fish - Math.floor(penalty * 0.5));
+            // Surfing - rain doesn't matter much, you're already wet
+            if (weatherCondition.condition === 'Snow') {
+                state.scores.surf = Math.max(1, state.scores.surf - 3);
+            }
+        }
+
         // Get recommendation
-        state.recommendation = getRecommendation(state.scores, surfScoreData, fishData, cycleData);
+        state.recommendation = getRecommendation(state.scores, surfScoreData, fishData, cycleData, weatherCondition);
     }
 
     // ============================================
@@ -733,11 +809,26 @@
         const rec = state.recommendation;
         document.getElementById('rec-activity').innerHTML = `${rec.icon} ${rec.activity}`;
         document.getElementById('rec-detail').textContent = rec.detail;
+        const runnerUpEl = document.getElementById('rec-runner-up');
+        if (rec.runnerUp) {
+            runnerUpEl.textContent = rec.runnerUp;
+            runnerUpEl.style.display = 'block';
+        } else {
+            runnerUpEl.style.display = 'none';
+        }
 
         // Conditions Summary
+        // Weather condition
+        if (state.weatherCondition) {
+            document.getElementById('summary-condition').textContent = state.weatherCondition.condition;
+        }
+
         // Air temp (from cycling data which uses Open-Meteo)
         if (state.cycleData && state.cycleData.temp) {
-            document.getElementById('summary-air-temp').textContent = `${state.cycleData.temp}°F`;
+            const tempStr = state.cycleData.feelsLike !== state.cycleData.temp
+                ? `${state.cycleData.temp}°F (${state.cycleData.feelsLike}°F)`
+                : `${state.cycleData.temp}°F`;
+            document.getElementById('summary-air-temp').textContent = tempStr;
         }
 
         // Water temp from NOAA
@@ -830,7 +921,10 @@
         document.getElementById('cycle-wind').textContent =
             `Wind: ${state.cycleData.windSpeed} mph ${state.cycleData.windCardinal}` +
             (state.cycleData.windGusts ? ` (gusts ${state.cycleData.windGusts} mph)` : '');
-        document.getElementById('cycle-temp').textContent = `Temperature: ${state.cycleData.temp}°F`;
+        const cycleTempStr = state.cycleData.feelsLike !== state.cycleData.temp
+            ? `Feels like ${state.cycleData.feelsLike}°F (actual ${state.cycleData.temp}°F)`
+            : `Temperature: ${state.cycleData.temp}°F`;
+        document.getElementById('cycle-temp').textContent = cycleTempStr;
         document.querySelector('.direction-text').textContent = state.cycleData.directionText;
 
         // Update direction arrow
