@@ -164,13 +164,19 @@
         else if (cloudCover > 50) condition = 'Partly Cloudy';
         else condition = 'Clear';
 
+        const windGusts = weather.hourly.wind_gusts_10m?.[hourIndex] || 0;
+
         return {
             precipitation: totalPrecip,
             snowfall: totalSnow,
             feelsLike: feelsLike !== null ? Math.round(feelsLike) : null,
             condition,
+            windSpeed,
+            windGusts,
             isWet: totalPrecip > 0.05 || totalSnow > 0.1,
-            isBadWeather: totalPrecip > 0.2 || totalSnow > 0.1 || windSpeed > 25
+            isRain: totalPrecip > 0.2,
+            isPouring: totalPrecip > 0.5,
+            isSuperWindy: windSpeed > 25 || windGusts > 35
         };
     }
 
@@ -687,19 +693,13 @@
     function getRecommendation(scores, surfScoreData, fishData, cycleData, weatherCondition) {
         const { surf, fish, photo, cycle } = scores;
 
-        // Find best activity
-        const activities = [
-            { name: 'surf', score: surf, label: 'GO SURF' },
-            { name: 'fish', score: fish, label: 'GO FISHING' },
-            { name: 'photo', score: photo, label: 'SUNRISE PHOTOS' },
-            { name: 'cycle', score: cycle, label: 'GO CYCLING' }
-        ];
+        const icons = {
+            surf: '&#127940;',
+            fish: '&#127907;',
+            photo: '&#128247;',
+            cycle: '&#128690;'
+        };
 
-        activities.sort((a, b) => b.score - a.score);
-        const best = activities[0];
-        const runnerUp = activities[1];
-
-        // Build detail for best activity
         function getDetail(activity) {
             if (activity.name === 'surf' && surfScoreData) return surfScoreData.details;
             if (activity.name === 'fish' && fishData) {
@@ -711,9 +711,32 @@
             return '';
         }
 
-        // Bad weather or all scores low = gym day
-        const isBadWeather = weatherCondition && weatherCondition.isBadWeather;
-        if (best.score < 4 || (isBadWeather && best.score < 6)) {
+        // Super windy = gym day, no question
+        if (weatherCondition && weatherCondition.isSuperWindy) {
+            let gymDetail = `Wind ${Math.round(weatherCondition.windSpeed)} mph`;
+            if (weatherCondition.windGusts > 35) gymDetail += `, gusts ${Math.round(weatherCondition.windGusts)} mph`;
+            if (weatherCondition.feelsLike !== null) gymDetail += ` - Feels like ${weatherCondition.feelsLike}°F`;
+            return {
+                activity: 'HIT THE GYM',
+                detail: gymDetail,
+                icon: '&#127947;',
+                runnerUp: null
+            };
+        }
+
+        // Sort activities - surf wins ties (stable sort with surf priority)
+        const activities = [
+            { name: 'surf', score: surf, label: 'GO SURF', priority: 0 },
+            { name: 'fish', score: fish, label: 'GO FISHING', priority: 1 },
+            { name: 'photo', score: photo, label: 'SUNRISE PHOTOS', priority: 3 },
+            { name: 'cycle', score: cycle, label: 'GO CYCLING', priority: 2 }
+        ];
+        activities.sort((a, b) => b.score - a.score || a.priority - b.priority);
+        const best = activities[0];
+        const runnerUp = activities[1];
+
+        // All scores low = gym day
+        if (best.score < 4) {
             let gymDetail = weatherCondition ? weatherCondition.condition : 'Poor conditions';
             if (weatherCondition && weatherCondition.feelsLike !== null) {
                 gymDetail += ` - Feels like ${weatherCondition.feelsLike}°F`;
@@ -721,17 +744,10 @@
             return {
                 activity: 'HIT THE GYM',
                 detail: gymDetail,
-                icon: '&#127947;',  // kettlebell/weight lifter
+                icon: '&#127947;',
                 runnerUp: best.score >= 3 ? `Or: ${best.label} (${best.score}/10)` : null
             };
         }
-
-        const icons = {
-            surf: '&#127940;',
-            fish: '&#127907;',
-            photo: '&#128247;',
-            cycle: '&#128690;'
-        };
 
         let detail = getDetail(best);
 
@@ -812,20 +828,28 @@
         state.scores.cycle = cycleData.score;
         state.cycleData = cycleData;
 
-        // Apply precipitation penalties to outdoor activities
-        if (weatherCondition && weatherCondition.isWet) {
-            const penalty = weatherCondition.condition === 'Snow' ? 6 :
-                            weatherCondition.condition === 'Rain' ? 5 : 2;
-            // Cycling is most affected by rain/snow
-            state.scores.cycle = Math.max(1, state.scores.cycle - penalty);
-            // Photo scoring already handles clouds, but rain kills it
-            state.scores.photo = Math.max(1, state.scores.photo - penalty);
-            // Fishing in light rain is fine, heavier rain less so
-            state.scores.fish = Math.max(1, state.scores.fish - Math.floor(penalty * 0.5));
-            // Surfing - rain doesn't matter much, you're already wet
+        // Apply weather rules
+        if (weatherCondition) {
+            // Any rain or snow = no cycling, period
+            if (weatherCondition.isWet) {
+                state.scores.cycle = 1;
+            }
+            // Rain kills sunrise photos
+            if (weatherCondition.isWet) {
+                state.scores.photo = 1;
+            }
+            // Pouring = no fishing. Light rain is fine.
+            if (weatherCondition.isPouring) {
+                state.scores.fish = Math.max(1, state.scores.fish - 5);
+            }
+            // Surfing: rain doesn't matter, you're already wet. Snow is rough though.
             if (weatherCondition.condition === 'Snow') {
                 state.scores.surf = Math.max(1, state.scores.surf - 3);
             }
+        }
+        // Photos only recommended if actually a good sunrise (score >= 6 pre-penalty)
+        if (state.scores.photo < 6) {
+            state.scores.photo = Math.min(state.scores.photo, 4);
         }
 
         // Get recommendation
