@@ -533,6 +533,147 @@
     }
 
     // ============================================
+    // Arrival Times
+    // ============================================
+    function calculateArrivalTimes(sunriseData, noaaTides) {
+        const result = {};
+        if (!sunriseData || !sunriseData.results) return result;
+
+        const sunrise = new Date(sunriseData.results.sunrise);
+
+        // Surf: first light = sunrise minus 30 min
+        const surfTime = new Date(sunrise.getTime() - 30 * 60 * 1000);
+        result.surf = { time: formatTime(surfTime), label: 'Get to the beach by ' + formatTime(surfTime) };
+
+        // Fish: 1 hour before nearest morning tide change (H or L between 5-10AM)
+        let fishTideTime = null;
+        const tomorrow = getTomorrowDate();
+        if (noaaTides && noaaTides.predictions) {
+            for (const pred of noaaTides.predictions) {
+                if (pred.type !== 'H' && pred.type !== 'L') continue;
+                const [dateStr, timeStr] = pred.t.split(' ');
+                if (dateStr === tomorrow) {
+                    const hour = parseInt(timeStr.split(':')[0], 10);
+                    if (hour >= 5 && hour <= 10) {
+                        // Parse tide time
+                        const [h, m] = timeStr.split(':');
+                        const tideDate = new Date(tomorrow + 'T' + h.padStart(2, '0') + ':' + m + ':00');
+                        fishTideTime = new Date(tideDate.getTime() - 60 * 60 * 1000);
+                        break;
+                    }
+                }
+            }
+        }
+        if (fishTideTime) {
+            result.fish = { time: formatTime(fishTideTime), label: 'Get to the pier by ' + formatTime(fishTideTime) };
+        } else {
+            result.fish = { time: formatTime(surfTime), label: 'Get to the pier by ' + formatTime(surfTime) };
+        }
+
+        // Photo: 20 min before sunrise
+        const photoTime = new Date(sunrise.getTime() - 20 * 60 * 1000);
+        result.photo = { time: formatTime(photoTime), label: 'Get there by ' + formatTime(photoTime) };
+
+        // Cycle: sunrise time
+        result.cycle = { time: formatTime(sunrise), label: 'Roll out by ' + formatTime(sunrise) };
+
+        return result;
+    }
+
+    // ============================================
+    // Swell Trend
+    // ============================================
+    function getSwellTrend(marineData) {
+        if (!marineData || !marineData.hourly || !marineData.hourly.time) return null;
+
+        const tomorrow = getTomorrowDate();
+        const times = marineData.hourly.time;
+        const waveHeights = marineData.hourly.wave_height || [];
+        const swellHeights = marineData.hourly.swell_wave_height || [];
+
+        let idx6 = -1;
+        let idx9 = -1;
+        for (let i = 0; i < times.length; i++) {
+            const t = new Date(times[i]);
+            const dateStr = formatLocalDate(t);
+            const hour = t.getHours();
+            if (dateStr === tomorrow && hour === 6) idx6 = i;
+            if (dateStr === tomorrow && hour === 9) idx9 = i;
+        }
+
+        if (idx6 === -1 || idx9 === -1) return null;
+
+        const height6am = (swellHeights[idx6] != null && swellHeights[idx6] > 0) ? swellHeights[idx6] : (waveHeights[idx6] || 0);
+        const height9am = (swellHeights[idx9] != null && swellHeights[idx9] > 0) ? swellHeights[idx9] : (waveHeights[idx9] || 0);
+        const diff = height9am - height6am;
+
+        let trend;
+        if (diff >= 0.3) trend = 'Building';
+        else if (diff <= -0.3) trend = 'Fading';
+        else trend = 'Steady';
+
+        const description = trend + ': ' + height6am.toFixed(1) + 'ft → ' + height9am.toFixed(1) + 'ft';
+
+        return { trend, height6am, height9am, description };
+    }
+
+    // ============================================
+    // Wind Trend
+    // ============================================
+    function getWindTrend(weather) {
+        if (!weather || !weather.hourly || !weather.hourly.time) return null;
+
+        const tomorrow = getTomorrowDate();
+        const times = weather.hourly.time;
+        const windSpeeds = weather.hourly.wind_speed_10m || [];
+        const windGusts = weather.hourly.wind_gusts_10m || [];
+
+        const targetHours = [5, 6, 7, 8, 9];
+        const speeds = [];
+        const gusts = [];
+
+        for (let i = 0; i < times.length; i++) {
+            const t = new Date(times[i]);
+            const dateStr = formatLocalDate(t);
+            const hour = t.getHours();
+            if (dateStr === tomorrow && targetHours.includes(hour)) {
+                speeds.push({ hour, speed: windSpeeds[i] || 0 });
+                gusts.push(windGusts[i] || 0);
+            }
+        }
+
+        if (speeds.length === 0) return null;
+
+        const allSpeeds = speeds.map(s => s.speed);
+        const min = Math.round(Math.min(...allSpeeds));
+        const max = Math.round(Math.max(...allSpeeds));
+        const gustMax = Math.round(Math.max(...gusts));
+
+        // Determine trend by comparing first half to second half
+        const firstSpeed = speeds[0].speed;
+        const lastSpeed = speeds[speeds.length - 1].speed;
+        let trend;
+        if (lastSpeed > firstSpeed + 3) trend = 'picking up';
+        else if (lastSpeed < firstSpeed - 3) trend = 'dying down';
+        else trend = 'steady';
+
+        let description;
+        if (min === max) {
+            description = min + ' mph, ' + trend;
+        } else {
+            description = min + '-' + max + ' mph, ' + trend;
+        }
+        if (trend === 'picking up') {
+            description += ' to ' + max + ' by 9AM';
+        }
+        if (gustMax > max + 3) {
+            description += ' (gusts ' + gustMax + ')';
+        }
+
+        return { min, max, trend, description, gustMax };
+    }
+
+    // ============================================
     // Scoring Functions
     // ============================================
     function calculateSurfScore(marineData, weatherData) {
@@ -630,12 +771,12 @@
         };
     }
 
-    function calculateSurfScoreFromMarine(marineData, weatherData) {
+    function calculateSurfScoreFromMarine(marineData, weatherData, targetDate) {
         if (!marineData || !marineData.hourly) {
             return { score: 0, details: 'No data available' };
         }
 
-        const tomorrow = getTomorrowDate();
+        const tomorrow = targetDate || getTomorrowDate();
         const times = marineData.hourly.time;
         const waveHeights = marineData.hourly.wave_height || [];
         const wavePeriods = marineData.hourly.wave_period || [];
@@ -714,8 +855,8 @@
         };
     }
 
-    function calculatePhotoScore(weather, sunriseData) {
-        const tomorrow = getTomorrowDate();
+    function calculatePhotoScore(weather, sunriseData, targetDate) {
+        const tomorrow = targetDate || getTomorrowDate();
         const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
 
         if (hourIndex === -1) {
@@ -794,8 +935,8 @@
         return 'Waning Crescent';
     }
 
-    function calculateFishScore(weather, noaaTides, waterTempData) {
-        const tomorrow = getTomorrowDate();
+    function calculateFishScore(weather, noaaTides, waterTempData, targetDate) {
+        const tomorrow = targetDate || getTomorrowDate();
         const tomorrowDate = new Date(tomorrow + 'T00:00:00');
         const month = tomorrowDate.getMonth() + 1; // 1-indexed
 
@@ -931,8 +1072,8 @@
         };
     }
 
-    function calculateCycleScore(weather) {
-        const tomorrow = getTomorrowDate();
+    function calculateCycleScore(weather, targetDate) {
+        const tomorrow = targetDate || getTomorrowDate();
         const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
 
         if (hourIndex === -1) {
@@ -1005,6 +1146,69 @@
             direction,
             directionText
         };
+    }
+
+    // ============================================
+    // 3-Day Outlook
+    // ============================================
+    function calculateOutlook(weather, marineData, noaaTides, waterTempData, sunriseData) {
+        const outlook = [];
+        for (let dayOffset = 1; dayOffset <= 3; dayOffset++) {
+            const d = new Date();
+            d.setDate(d.getDate() + dayOffset);
+            const dateStr = formatLocalDate(d);
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const dayName = dayNames[d.getDay()];
+
+            // Surf: use Open-Meteo Marine only for outlook
+            const surfData = calculateSurfScoreFromMarine(marineData, weather, dateStr);
+            let surfScore = surfData.score;
+
+            // Fish
+            const fishData = calculateFishScore(weather, noaaTides, waterTempData, dateStr);
+            let fishScore = fishData.score;
+
+            // Photo
+            const photoData = calculatePhotoScore(weather, sunriseData, dateStr);
+            let photoScore = photoData.score;
+
+            // Cycle
+            const cycleData = calculateCycleScore(weather, dateStr);
+            let cycleScore = cycleData.score;
+
+            // Apply weather rules
+            const wxCond = getMorningWeatherCondition(weather, dateStr);
+            if (wxCond) {
+                if (wxCond.isWet) {
+                    cycleScore = 1;
+                    photoScore = 1;
+                }
+                if (wxCond.isPouring) {
+                    fishScore = Math.max(1, fishScore - 5);
+                }
+                if (wxCond.condition === 'Snow') {
+                    surfScore = Math.max(1, surfScore - 3);
+                }
+                if (wxCond.isSuperWindy) {
+                    cycleScore = 1;
+                }
+            }
+            if (photoScore < 6) {
+                photoScore = Math.min(photoScore, 4);
+            }
+
+            outlook.push({
+                date: dateStr,
+                dayName: dayName,
+                scores: {
+                    surf: surfScore,
+                    fish: fishScore,
+                    photo: photoScore,
+                    cycle: cycleScore
+                }
+            });
+        }
+        return outlook;
     }
 
     function getRecommendation(scores, surfScoreData, fishData, cycleData, weatherCondition) {
@@ -1171,6 +1375,18 @@
             state.scores.photo = Math.min(state.scores.photo, 4);
         }
 
+        // Arrival times
+        state.arrivalTimes = calculateArrivalTimes(state.sunrise, state.noaaTides);
+
+        // Swell trend
+        state.swellTrend = getSwellTrend(state.marineData);
+
+        // Wind trend
+        state.windTrend = getWindTrend(state.weather);
+
+        // 3-Day Outlook
+        state.outlook = calculateOutlook(state.weather, state.marineData, state.noaaTides, state.waterTempData, state.sunrise);
+
         // Get recommendation
         state.recommendation = getRecommendation(state.scores, surfScoreData, fishData, cycleData, weatherCondition);
     }
@@ -1293,6 +1509,18 @@
             const breakdown = `Height: ${state.surfScoreData.heightScore}/10 | Period: ${state.surfScoreData.periodScore}/10 | Wind: ${state.surfScoreData.windScore}/10`;
             document.getElementById('surf-forecast').textContent = breakdown;
 
+            // Swell trend
+            if (state.swellTrend) {
+                document.getElementById('surf-swell-trend-desc').textContent = state.swellTrend.description;
+                document.getElementById('surf-swell-trend').style.display = 'block';
+            }
+
+            // Wind trend on surf card
+            if (state.windTrend) {
+                document.getElementById('surf-wind-trend-desc').textContent = state.windTrend.description;
+                document.getElementById('surf-wind-trend').style.display = 'block';
+            }
+
             // Board call
             if (state.scores.surf >= 3) {
                 const board = getBoardCall(state.surfScoreData, state.weather);
@@ -1301,6 +1529,16 @@
                 document.getElementById('surf-board-call').style.display = 'block';
             } else {
                 document.getElementById('surf-board-call').style.display = 'none';
+            }
+
+            // Wetsuit recommendation
+            const wetsuitWaterTemp = (state.buoyData && state.buoyData.waterTemp) || state.waterTempNoaa;
+            if (wetsuitWaterTemp && state.scores.surf >= 3) {
+                const wetsuit = getWetsuitRecommendation(wetsuitWaterTemp);
+                document.getElementById('surf-wetsuit-name').textContent = wetsuit;
+                document.getElementById('surf-wetsuit').style.display = 'block';
+            } else {
+                document.getElementById('surf-wetsuit').style.display = 'none';
             }
         }
 
@@ -1312,8 +1550,9 @@
             document.getElementById('fish-tide').textContent = state.fishData.tideDetail;
             document.getElementById('fish-pressure').textContent =
                 `Pressure: ${state.fishData.pressureTrend}`;
-            document.getElementById('fish-wind').textContent =
-                `Wind: ${state.fishData.windSpeed} mph`;
+            document.getElementById('fish-wind').textContent = state.windTrend
+                ? `Wind: ${state.windTrend.description}`
+                : `Wind: ${state.fishData.windSpeed} mph`;
             if (state.fishData.waterTemp) {
                 document.getElementById('fish-water-temp').textContent =
                     `Water: ${state.fishData.waterTemp}°F`;
@@ -1346,9 +1585,10 @@
         // Cycle card
         document.getElementById('cycle-score').textContent = state.scores.cycle;
         updateScoreColor('cycle-card', state.scores.cycle);
-        document.getElementById('cycle-wind').textContent =
-            `Wind: ${state.cycleData.windSpeed} mph ${state.cycleData.windCardinal}` +
-            (state.cycleData.windGusts ? ` (gusts ${state.cycleData.windGusts} mph)` : '');
+        document.getElementById('cycle-wind').textContent = state.windTrend
+            ? `Wind: ${state.windTrend.description}`
+            : `Wind: ${state.cycleData.windSpeed} mph ${state.cycleData.windCardinal}` +
+              (state.cycleData.windGusts ? ` (gusts ${state.cycleData.windGusts} mph)` : '');
         const cycleTempStr = state.cycleData.feelsLike !== state.cycleData.temp
             ? `Feels like ${state.cycleData.feelsLike}°F (actual ${state.cycleData.temp}°F)`
             : `Temperature: ${state.cycleData.temp}°F`;
@@ -1364,6 +1604,70 @@
         } else {
             dirIcon.innerHTML = '&#8596;'; // Both ways
         }
+
+        // Arrival times
+        if (state.arrivalTimes) {
+            if (state.arrivalTimes.surf) {
+                document.getElementById('surf-arrival-text').textContent = state.arrivalTimes.surf.label;
+                document.getElementById('surf-arrival').style.display = 'flex';
+            }
+            if (state.arrivalTimes.fish) {
+                document.getElementById('fish-arrival-text').textContent = state.arrivalTimes.fish.label;
+                document.getElementById('fish-arrival').style.display = 'flex';
+            }
+            if (state.arrivalTimes.photo) {
+                document.getElementById('photo-arrival-text').textContent = state.arrivalTimes.photo.label;
+                document.getElementById('photo-arrival').style.display = 'flex';
+            }
+            if (state.arrivalTimes.cycle) {
+                document.getElementById('cycle-arrival-text').textContent = state.arrivalTimes.cycle.label;
+                document.getElementById('cycle-arrival').style.display = 'flex';
+            }
+        }
+
+        // 3-Day Outlook
+        if (state.outlook && state.outlook.length > 0) {
+            const outlookGrid = document.getElementById('outlook-grid');
+            outlookGrid.innerHTML = '';
+            for (const day of state.outlook) {
+                const row = document.createElement('div');
+                row.className = 'outlook-row';
+
+                const dayLabel = document.createElement('span');
+                dayLabel.className = 'outlook-day';
+                dayLabel.textContent = day.dayName;
+                row.appendChild(dayLabel);
+
+                const badges = document.createElement('div');
+                badges.className = 'outlook-badges';
+
+                const activities = [
+                    { key: 'surf', icon: '&#127940;' },
+                    { key: 'fish', icon: '&#127907;' },
+                    { key: 'photo', icon: '&#128247;' },
+                    { key: 'cycle', icon: '&#128690;' }
+                ];
+
+                for (const act of activities) {
+                    const badge = document.createElement('span');
+                    const score = day.scores[act.key];
+                    let badgeClass = 'outlook-badge';
+                    if (score >= 7) badgeClass += ' badge-high';
+                    else if (score >= 5) badgeClass += ' badge-medium';
+                    else badgeClass += ' badge-low';
+                    badge.className = badgeClass;
+                    badge.innerHTML = '<span class="outlook-badge-icon">' + act.icon + '</span>' + score;
+                    badges.appendChild(badge);
+                }
+
+                row.appendChild(badges);
+                outlookGrid.appendChild(row);
+            }
+            document.getElementById('outlook-section').style.display = 'block';
+        }
+
+        // Morning Journal
+        renderJournalSection();
 
         // Last updated
         document.getElementById('last-updated').textContent = formatDateTime(new Date());
@@ -1491,6 +1795,141 @@
 
         return morningTides.map(t => `${t.type} ${t.time}`).join(', ');
     }
+
+    // ============================================
+    // Morning Journal
+    // ============================================
+    let journalSelectedActivity = null;
+    let journalSelectedRating = 0;
+
+    function getJournalEntries() {
+        try {
+            const data = localStorage.getItem('dawnPatrolJournal');
+            return data ? JSON.parse(data) : [];
+        } catch (e) {
+            console.warn('Failed to read journal:', e);
+            return [];
+        }
+    }
+
+    function saveJournalEntry(entry) {
+        const entries = getJournalEntries();
+        entries.unshift(entry);
+        try {
+            localStorage.setItem('dawnPatrolJournal', JSON.stringify(entries));
+        } catch (e) {
+            console.warn('Failed to save journal:', e);
+        }
+    }
+
+    function getRecentEntries(days) {
+        const entries = getJournalEntries();
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        const cutoffStr = formatLocalDate(cutoff);
+        return entries.filter(e => e.date >= cutoffStr);
+    }
+
+    function getActivityIcon(activity) {
+        const icons = { surf: '&#127940;', fish: '&#127907;', cycle: '&#128690;', photo: '&#128247;', gym: '&#127947;' };
+        return icons[activity] || '&#9679;';
+    }
+
+    function renderJournalSection() {
+        const entries = getRecentEntries(7);
+        const container = document.getElementById('journal-entries');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (entries.length === 0) {
+            container.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:13px;padding:8px;">No entries in the last 7 days</div>';
+            return;
+        }
+
+        for (const entry of entries) {
+            const div = document.createElement('div');
+            div.className = 'journal-entry';
+            const stars = Array.from({ length: 5 }, (_, i) => i < entry.rating ? '&#9733;' : '&#9734;').join('');
+            let predictedText = '';
+            if (entry.predictedScores && entry.predictedActivity) {
+                const activityScore = entry.predictedScores[entry.activity] || '?';
+                predictedText = '<div class="journal-entry-predicted">Predicted ' + activityScore + '/10 vs Rated ' + entry.rating + '/5</div>';
+            }
+            const dateObj = new Date(entry.date + 'T12:00:00');
+            const dateDisplay = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            div.innerHTML =
+                '<span class="journal-entry-icon">' + getActivityIcon(entry.activity) + '</span>' +
+                '<div class="journal-entry-body">' +
+                    '<div class="journal-entry-header">' +
+                        '<span class="journal-entry-date">' + dateDisplay + '</span>' +
+                        '<span class="journal-entry-stars">' + stars + '</span>' +
+                    '</div>' +
+                    (entry.notes ? '<div class="journal-entry-notes">' + escapeHtml(entry.notes) + '</div>' : '') +
+                    predictedText +
+                '</div>';
+            container.appendChild(div);
+        }
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    window.showLogForm = function() {
+        document.getElementById('journal-form').style.display = 'block';
+        document.getElementById('journal-toggle-btn').style.display = 'none';
+        journalSelectedActivity = null;
+        journalSelectedRating = 0;
+        document.querySelectorAll('.journal-activity-btn').forEach(btn => btn.classList.remove('selected'));
+        document.querySelectorAll('.journal-star').forEach(s => s.classList.remove('selected'));
+        document.getElementById('journal-notes').value = '';
+    };
+
+    window.hideLogForm = function() {
+        document.getElementById('journal-form').style.display = 'none';
+        document.getElementById('journal-toggle-btn').style.display = 'block';
+    };
+
+    window.selectJournalActivity = function(activity) {
+        journalSelectedActivity = activity;
+        document.querySelectorAll('.journal-activity-btn').forEach(btn => {
+            btn.classList.toggle('selected', btn.getAttribute('data-activity') === activity);
+        });
+    };
+
+    window.selectJournalRating = function(rating) {
+        journalSelectedRating = rating;
+        document.querySelectorAll('.journal-star').forEach(s => {
+            const starVal = parseInt(s.getAttribute('data-star'), 10);
+            s.classList.toggle('selected', starVal <= rating);
+        });
+    };
+
+    window.submitJournalEntry = function() {
+        if (!journalSelectedActivity) {
+            alert('Please select an activity');
+            return;
+        }
+        if (journalSelectedRating === 0) {
+            alert('Please select a rating');
+            return;
+        }
+
+        const notes = document.getElementById('journal-notes').value.trim();
+        const entry = {
+            date: formatLocalDate(new Date()),
+            activity: journalSelectedActivity,
+            rating: journalSelectedRating,
+            notes: notes,
+            predictedScores: state.scores ? { ...state.scores } : null,
+            predictedActivity: state.recommendation ? state.recommendation.activity : null
+        };
+        saveJournalEntry(entry);
+        window.hideLogForm();
+        renderJournalSection();
+    };
 
     // ============================================
     // Event Handlers
