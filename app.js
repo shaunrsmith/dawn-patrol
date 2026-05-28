@@ -57,6 +57,14 @@
         marineWaves: (lat, lng) =>
             `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period&timezone=America/New_York&forecast_days=2&length_unit=imperial`,
 
+        // Surfline API (spot-specific surf forecasts)
+        surflineWave: (spotId) =>
+            `https://services.surfline.com/kbyg/spots/forecasts/wave?spotId=${spotId}&days=2&intervalHours=3`,
+        surflineRating: (spotId) =>
+            `https://services.surfline.com/kbyg/spots/forecasts/rating?spotId=${spotId}&days=2&intervalHours=3`,
+        surflineWind: (spotId) =>
+            `https://services.surfline.com/kbyg/spots/forecasts/wind?spotId=${spotId}&days=2&intervalHours=3`,
+
         // NDBC Buoy 44091 (Barnegat, NJ) - closest wave buoy
         ndbcBuoy: () =>
             `https://www.ndbc.noaa.gov/data/realtime2/44091.txt`
@@ -72,6 +80,7 @@
         noaaTides: null,
         waterTempData: null,
         buoyData: null,
+        surflineData: null,
         scores: {
             surf: 0,
             fish: 0,
@@ -297,6 +306,109 @@
         };
     }
 
+    async function fetchSurflineData() {
+        // Fetch Surfline spot-specific data for Ventnor Pier
+        const spotId = CONFIG.surfSpots[0].id; // Ventnor Pier
+        try {
+            const [waveRes, ratingRes, windRes] = await Promise.all([
+                fetch(API.surflineWave(spotId)),
+                fetch(API.surflineRating(spotId)),
+                fetch(API.surflineWind(spotId))
+            ]);
+            if (!waveRes.ok) throw new Error('Surfline wave API failed');
+            const waveData = await waveRes.json();
+            const ratingData = ratingRes.ok ? await ratingRes.json() : null;
+            const windData = windRes.ok ? await windRes.json() : null;
+            return parseSurflineData(waveData, ratingData, windData);
+        } catch (error) {
+            console.warn('Surfline unavailable (CORS or network):', error.message);
+            return null;
+        }
+    }
+
+    function parseSurflineData(waveData, ratingData, windData) {
+        if (!waveData || !waveData.data || !waveData.data.wave || waveData.data.wave.length === 0) return null;
+
+        const tomorrow = getTomorrowDate();
+        const tomorrowStart = new Date(tomorrow + 'T00:00:00').getTime() / 1000;
+        const tomorrowEnd = tomorrowStart + 86400;
+
+        // Find morning entries (6-9 AM tomorrow)
+        const morningStart = tomorrowStart + (CONFIG.morningStartHour * 3600);
+        const morningEnd = tomorrowStart + (CONFIG.morningEndHour * 3600);
+
+        // Find closest wave entry to morning
+        let bestWave = null;
+        for (const entry of waveData.data.wave) {
+            if (entry.timestamp >= morningStart && entry.timestamp <= morningEnd) {
+                bestWave = entry;
+                break;
+            }
+        }
+        // Fall back to first entry of the day
+        if (!bestWave) {
+            for (const entry of waveData.data.wave) {
+                if (entry.timestamp >= tomorrowStart && entry.timestamp < tomorrowEnd) {
+                    bestWave = entry;
+                    break;
+                }
+            }
+        }
+        if (!bestWave) return null;
+
+        // Get rating for same time window
+        let bestRating = null;
+        if (ratingData && ratingData.data && ratingData.data.rating) {
+            for (const entry of ratingData.data.rating) {
+                if (entry.timestamp >= morningStart && entry.timestamp <= morningEnd) {
+                    bestRating = entry;
+                    break;
+                }
+            }
+            if (!bestRating) {
+                for (const entry of ratingData.data.rating) {
+                    if (entry.timestamp >= tomorrowStart && entry.timestamp < tomorrowEnd) {
+                        bestRating = entry;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Get wind for same time window
+        let bestWind = null;
+        if (windData && windData.data && windData.data.wind) {
+            for (const entry of windData.data.wind) {
+                if (entry.timestamp >= morningStart && entry.timestamp <= morningEnd) {
+                    bestWind = entry;
+                    break;
+                }
+            }
+        }
+
+        const surfMin = bestWave.surf?.min || 0;
+        const surfMax = bestWave.surf?.max || 0;
+        const surfHeight = (surfMin + surfMax) / 2;
+        const primarySwell = bestWave.swells?.[0] || {};
+
+        return {
+            surfMin: Math.round(surfMin * 10) / 10,
+            surfMax: Math.round(surfMax * 10) / 10,
+            surfHeight,
+            swellHeight: primarySwell.height || 0,
+            swellPeriod: primarySwell.period || 0,
+            swellDirection: primarySwell.direction || 0,
+            swellCardinal: primarySwell.direction ? degreesToCardinal(primarySwell.direction) : '',
+            rating: bestRating?.rating?.value ?? null,
+            wind: bestWind ? {
+                speed: Math.round(bestWind.speed || 0),
+                gust: Math.round(bestWind.gust || 0),
+                direction: bestWind.direction || 0,
+                directionType: bestWind.directionType || ''
+            } : null
+        };
+    }
+
     // ============================================
     // Board Call
     // ============================================
@@ -355,7 +467,101 @@
     // Scoring Functions
     // ============================================
     function calculateSurfScore(marineData, weatherData) {
-        // Uses Open-Meteo Marine API data
+        const sl = state.surflineData;
+
+        // If Surfline data available, use spot-specific surf heights
+        if (sl) {
+            return calculateSurfScoreFromSurfline(sl, weatherData);
+        }
+
+        // Fallback to Open-Meteo Marine
+        return calculateSurfScoreFromMarine(marineData, weatherData);
+    }
+
+    function calculateSurfScoreFromSurfline(sl, weatherData) {
+        const waveHeight = sl.surfHeight || 0;
+        const period = sl.swellPeriod || 0;
+        const direction = sl.swellDirection || 0;
+
+        // Surfline surf height is spot-specific (already accounts for bathymetry)
+        let heightScore;
+        if (waveHeight < 1) heightScore = 1;
+        else if (waveHeight < 1.5) heightScore = 3;
+        else if (waveHeight < 2.5) heightScore = 5;
+        else if (waveHeight < 3.5) heightScore = 7;
+        else if (waveHeight < 5) heightScore = 9;
+        else if (waveHeight < 6) heightScore = 10;
+        else if (waveHeight < 8) heightScore = 8;
+        else heightScore = 6;
+
+        let periodScore;
+        if (period < 5) periodScore = 2;
+        else if (period < 7) periodScore = 4;
+        else if (period < 9) periodScore = 6;
+        else if (period < 11) periodScore = 8;
+        else periodScore = 10;
+
+        // Use Surfline wind data if available, else fall back to ECMWF
+        let windScore = 5;
+        if (sl.wind) {
+            const dt = sl.wind.directionType;
+            const spd = sl.wind.speed;
+            if (dt === 'Offshore' && spd < 8) windScore = 10;
+            else if (dt === 'Offshore') windScore = 8;
+            else if (dt === 'Cross-shore' && spd < 8) windScore = 7;
+            else if (dt === 'Cross-shore') windScore = 5;
+            else if (spd < 8) windScore = 6;
+            else if (spd < 15) windScore = 4;
+            else windScore = 2;
+        } else if (weatherData && weatherData.hourly) {
+            const tomorrow = getTomorrowDate();
+            const wxIndex = getMorningHourIndex(weatherData.hourly.time, tomorrow);
+            if (wxIndex !== -1) {
+                const windSpeed = weatherData.hourly.wind_speed_10m[wxIndex] || 0;
+                const windDir = weatherData.hourly.wind_direction_10m[wxIndex] || 0;
+                const isOffshore = windDir >= 250 && windDir <= 320;
+                const isLightWind = windSpeed < 8;
+                if (isOffshore && isLightWind) windScore = 10;
+                else if (isOffshore) windScore = 8;
+                else if (isLightWind) windScore = 7;
+                else if (windSpeed < 15) windScore = 4;
+                else windScore = 2;
+            }
+        }
+
+        // If Surfline provides a rating, blend it in (their rating is 0-6 scale)
+        let finalScore;
+        if (sl.rating !== null && sl.rating !== undefined) {
+            const surflineScore = Math.round((sl.rating / 6) * 10);
+            // 50% Surfline rating, 25% our height score, 15% period, 10% wind
+            finalScore = Math.round(
+                (surflineScore * 0.50) +
+                (heightScore * 0.25) +
+                (periodScore * 0.15) +
+                (windScore * 0.10)
+            );
+        } else {
+            finalScore = Math.round((heightScore * 0.4) + (periodScore * 0.3) + (windScore * 0.3));
+        }
+
+        const heightStr = `${sl.surfMin}-${sl.surfMax}ft`;
+        const periodStr = period > 0 ? `${Math.round(period)}s` : '';
+        const dirStr = sl.swellCardinal || degreesToCardinal(direction);
+
+        return {
+            score: Math.min(10, Math.max(1, finalScore)),
+            waveHeight: waveHeight,
+            details: `${heightStr} @ ${periodStr} ${dirStr}`,
+            period: period,
+            direction: direction,
+            heightScore,
+            periodScore,
+            windScore,
+            source: 'Surfline'
+        };
+    }
+
+    function calculateSurfScoreFromMarine(marineData, weatherData) {
         if (!marineData || !marineData.hourly) {
             return { score: 0, details: 'No data available' };
         }
@@ -369,13 +575,11 @@
         const swellPeriods = marineData.hourly.swell_wave_period || [];
         const swellDirections = marineData.hourly.swell_wave_direction || [];
 
-        // Find morning index for tomorrow
         let morningIndex = -1;
         for (let i = 0; i < times.length; i++) {
             const time = new Date(times[i]);
             const dateStr = formatLocalDate(time);
             const hour = time.getHours();
-
             if (dateStr === tomorrow && hour >= CONFIG.morningStartHour && hour <= CONFIG.morningEndHour) {
                 morningIndex = i;
                 break;
@@ -386,13 +590,10 @@
             return { score: 0, details: 'No forecast data' };
         }
 
-        // Get wave data for morning
         const waveHeight = waveHeights[morningIndex] || 0;
-        const swellHeight = swellHeights[morningIndex] || waveHeight;
         const period = swellPeriods[morningIndex] || wavePeriods[morningIndex] || 0;
         const direction = swellDirections[morningIndex] || waveDirections[morningIndex] || 0;
 
-        // Wave height score (in feet)
         let heightScore;
         if (waveHeight < 1) heightScore = 1;
         else if (waveHeight < 2) heightScore = 3;
@@ -401,9 +602,8 @@
         else if (waveHeight < 5) heightScore = 9;
         else if (waveHeight < 6) heightScore = 10;
         else if (waveHeight < 8) heightScore = 8;
-        else heightScore = 6; // Too big
+        else heightScore = 6;
 
-        // Period score
         let periodScore;
         if (period < 5) periodScore = 2;
         else if (period < 7) periodScore = 4;
@@ -411,18 +611,14 @@
         else if (period < 11) periodScore = 8;
         else periodScore = 10;
 
-        // Wind score from weather data
         let windScore = 5;
         if (weatherData && weatherData.hourly) {
             const wxIndex = getMorningHourIndex(weatherData.hourly.time, tomorrow);
             if (wxIndex !== -1) {
                 const windSpeed = weatherData.hourly.wind_speed_10m[wxIndex] || 0;
                 const windDir = weatherData.hourly.wind_direction_10m[wxIndex] || 0;
-
-                // For NJ coast, offshore is W-NW (250-320 degrees)
                 const isOffshore = windDir >= 250 && windDir <= 320;
                 const isLightWind = windSpeed < 8;
-
                 if (isOffshore && isLightWind) windScore = 10;
                 else if (isOffshore) windScore = 8;
                 else if (isLightWind) windScore = 7;
@@ -431,10 +627,7 @@
             }
         }
 
-        // Calculate final score
         const finalScore = Math.round((heightScore * 0.4) + (periodScore * 0.3) + (windScore * 0.3));
-
-        // Build details string
         const heightStr = `${waveHeight.toFixed(1)}ft`;
         const periodStr = period > 0 ? `${Math.round(period)}s` : '';
         const dirStr = degreesToCardinal(direction);
@@ -447,7 +640,8 @@
             direction: direction,
             heightScore,
             periodScore,
-            windScore
+            windScore,
+            source: 'Open-Meteo'
         };
     }
 
@@ -827,13 +1021,14 @@
 
         try {
             // Fetch all data in parallel
-            const [weather, sunriseData, noaaTides, waterTempData, marineData, buoyData] = await Promise.all([
+            const [weather, sunriseData, noaaTides, waterTempData, marineData, buoyData, surflineData] = await Promise.all([
                 fetchWeather(),
                 fetchSunrise(),
                 fetchNoaaTides(),
                 fetchWaterTemp(),
                 fetchMarineData(),
-                fetchBuoyData()
+                fetchBuoyData(),
+                fetchSurflineData()
             ]);
 
             state.weather = weather;
@@ -842,6 +1037,7 @@
             state.waterTempData = waterTempData;
             state.marineData = marineData;
             state.buoyData = buoyData;
+            state.surflineData = surflineData;
 
             // Calculate scores
             calculateAllScores();
@@ -985,7 +1181,8 @@
         updateScoreColor('surf-card', state.scores.surf);
 
         if (state.surfScoreData) {
-            document.getElementById('surf-best-spot').textContent = `Ventnor Area`;
+            const source = state.surfScoreData.source || 'Open-Meteo';
+            document.getElementById('surf-best-spot').textContent = `Ventnor Area (${source})`;
             document.getElementById('surf-conditions').textContent = state.surfScoreData.details;
 
             // Get tide info from NOAA
