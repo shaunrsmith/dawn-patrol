@@ -334,6 +334,35 @@ body {
     border-top: 1px solid var(--border-color);
 }
 
+/* Board Call */
+.board-call {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(74, 144, 217, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(74, 144, 217, 0.2);
+}
+
+.board-call-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--accent-blue);
+    margin-bottom: 4px;
+}
+
+.board-call-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.board-call-reason {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
 /* Fish Species Tags */
 .fish-species {
     display: flex;

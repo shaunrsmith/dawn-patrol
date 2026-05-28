@@ -298,6 +298,60 @@
     }
 
     // ============================================
+    // Board Call
+    // ============================================
+    function getBoardCall(surfData, weatherData) {
+        const tomorrow = getTomorrowDate();
+        const waveHeight = surfData.waveHeight || 0;
+        const period = surfData.period || 0;
+
+        let isOffshore = false;
+        let isLightWind = false;
+        let windSpeed = 0;
+        if (weatherData && weatherData.hourly) {
+            const wxIndex = getMorningHourIndex(weatherData.hourly.time, tomorrow);
+            if (wxIndex !== -1) {
+                windSpeed = weatherData.hourly.wind_speed_10m[wxIndex] || 0;
+                const windDir = weatherData.hourly.wind_direction_10m[wxIndex] || 0;
+                isOffshore = windDir >= 250 && windDir <= 320;
+                isLightWind = windSpeed < 8;
+            }
+        }
+
+        const isClean = isOffshore || isLightWind;
+        const isGroundswell = period >= 10;
+        const isOnshore = !isOffshore && windSpeed > 8;
+        const isSmallOrMushy = waveHeight < 3 || (period < 8 && !isOffshore);
+
+        // Funline: small/mushy/onshore
+        if (isSmallOrMushy || (isOnshore && waveHeight < 4)) {
+            return {
+                board: 'Funline',
+                specs: "8'0 · 2+1",
+                reason: isOnshore ? 'Onshore — log it' : 'Small/mushy — extra float'
+            };
+        }
+
+        // Darkness: clean groundswell, lined-up walls, trim feel
+        if (isClean && isGroundswell && waveHeight >= 3) {
+            return {
+                board: 'Darkness',
+                specs: "7'2 · quad",
+                reason: 'Clean groundswell — trim the walls'
+            };
+        }
+
+        // Vesper: steep/wedgy/punchy, borderline, or tiebreaker
+        return {
+            board: 'Vesper',
+            specs: "6'10 · quad",
+            reason: (waveHeight >= 3 && period >= 8)
+                ? 'Steep & punchy — quick to speed'
+                : 'Borderline day — fastest paddle-in'
+        };
+    }
+
+    // ============================================
     // Scoring Functions
     // ============================================
     function calculateSurfScore(marineData, weatherData) {
@@ -972,6 +1026,16 @@
             // Show wave breakdown instead of forecaster headline
             const breakdown = `Height: ${state.surfScoreData.heightScore}/10 | Period: ${state.surfScoreData.periodScore}/10 | Wind: ${state.surfScoreData.windScore}/10`;
             document.getElementById('surf-forecast').textContent = breakdown;
+
+            // Board call
+            if (state.scores.surf >= 3) {
+                const board = getBoardCall(state.surfScoreData, state.weather);
+                document.getElementById('surf-board-name').textContent = `${board.board} — ${board.specs}`;
+                document.getElementById('surf-board-reason').textContent = board.reason;
+                document.getElementById('surf-board-call').style.display = 'block';
+            } else {
+                document.getElementById('surf-board-call').style.display = 'none';
+            }
         }
 
         // Fish card
