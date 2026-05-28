@@ -40,7 +40,7 @@
     const API = {
         // Using ECMWF model - generally most accurate global model
         openMeteo: (lat, lng) =>
-            `https://api.open-meteo.com/v1/ecmwf?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,apparent_temperature,cloud_cover,precipitation,snowfall,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/New_York&forecast_days=2`,
+            `https://api.open-meteo.com/v1/ecmwf?latitude=${lat}&longitude=${lng}&hourly=temperature_2m,apparent_temperature,cloud_cover,precipitation,snowfall,wind_speed_10m,wind_direction_10m,wind_gusts_10m,pressure_msl,relative_humidity_2m&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=America/New_York&forecast_days=4`,
 
         sunrise: (lat, lng, date) =>
             `https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lng}&date=${date}&formatted=0`,
@@ -55,7 +55,7 @@
 
         // Open-Meteo Marine API for wave data (free, no CORS issues)
         marineWaves: (lat, lng) =>
-            `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period&timezone=America/New_York&forecast_days=2&length_unit=imperial`,
+            `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period&timezone=America/New_York&forecast_days=4&length_unit=imperial`,
 
         // Surfline API (spot-specific surf forecasts)
         surflineWave: (spotId) =>
@@ -149,9 +149,9 @@
         return -1;
     }
 
-    function getMorningWeatherCondition(weather) {
-        // Determine precipitation and weather conditions for tomorrow morning
-        const tomorrow = getTomorrowDate();
+    function getMorningWeatherCondition(weather, targetDate) {
+        // Determine precipitation and weather conditions for a target morning
+        const tomorrow = targetDate || getTomorrowDate();
         const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
         if (hourIndex === -1) return { precipitation: 0, snowfall: 0, feelsLike: null, condition: 'Unknown' };
 
@@ -222,12 +222,12 @@
     async function fetchNoaaTides() {
         try {
             const today = new Date();
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
+            const endDay = new Date();
+            endDay.setDate(endDay.getDate() + 4);
 
             // Format dates as YYYYMMDD for NOAA API
             const beginDate = formatLocalDate(today).replace(/-/g, '');
-            const endDate = formatLocalDate(tomorrow).replace(/-/g, '');
+            const endDate = formatLocalDate(endDay).replace(/-/g, '');
 
             const response = await fetch(API.noaaTides(beginDate, endDate));
             if (!response.ok) throw new Error('NOAA Tides API failed');
@@ -464,6 +464,18 @@
                 directionType: bestWind.directionType || ''
             } : null
         };
+    }
+
+    // ============================================
+    // Wetsuit Recommendation
+    // ============================================
+    function getWetsuitRecommendation(waterTempF) {
+        if (waterTempF >= 72) return 'Trunks';
+        if (waterTempF >= 65) return 'Springsuit or 3/2';
+        if (waterTempF >= 60) return '3/2';
+        if (waterTempF >= 55) return '3/2 + boots';
+        if (waterTempF >= 50) return '4/3 + boots + gloves';
+        return '5/4 + boots + gloves + hood';
     }
 
     // ============================================

@@ -577,6 +577,394 @@ body {
     }
 }
 
+/* Wetsuit Call */
+.wetsuit-call {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(46, 204, 113, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(46, 204, 113, 0.2);
+}
+
+.wetsuit-call-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--accent-green);
+    margin-bottom: 4px;
+}
+
+.wetsuit-call-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* Arrival Time */
+.arrival-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(244, 162, 97, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(244, 162, 97, 0.2);
+}
+
+.arrival-icon {
+    font-size: 16px;
+    color: var(--accent-gold);
+}
+
+.arrival-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-gold);
+}
+
+/* Swell Trend */
+.swell-trend {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(74, 144, 217, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(74, 144, 217, 0.2);
+}
+
+.swell-trend-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--accent-blue);
+    margin-bottom: 4px;
+}
+
+.swell-trend-desc {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Wind Trend */
+.wind-trend {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(230, 126, 34, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(230, 126, 34, 0.2);
+}
+
+.wind-trend-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--accent-orange);
+    margin-bottom: 4px;
+}
+
+.wind-trend-desc {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* 3-Day Outlook */
+.outlook-section {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.outlook-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.outlook-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.outlook-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+}
+
+.outlook-day {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 50px;
+}
+
+.outlook-badges {
+    display: flex;
+    gap: 6px;
+    flex: 1;
+    justify-content: flex-end;
+}
+
+.outlook-badge {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    min-width: 48px;
+    justify-content: center;
+}
+
+.outlook-badge.badge-high {
+    background: rgba(46, 204, 113, 0.15);
+    color: var(--accent-green);
+}
+
+.outlook-badge.badge-medium {
+    background: rgba(230, 126, 34, 0.15);
+    color: var(--accent-orange);
+}
+
+.outlook-badge.badge-low {
+    background: rgba(231, 76, 60, 0.15);
+    color: var(--accent-red);
+}
+
+.outlook-badge-icon {
+    font-size: 11px;
+}
+
+/* Morning Journal */
+.journal-section {
+    margin-top: 20px;
+    padding: 16px;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.journal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+}
+
+.btn-journal-toggle {
+    width: 100%;
+    background: rgba(244, 162, 97, 0.1);
+    color: var(--accent-gold);
+    border: 1px solid rgba(244, 162, 97, 0.2);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-bottom: 12px;
+    transition: all 0.2s;
+}
+
+.btn-journal-toggle:hover {
+    background: rgba(244, 162, 97, 0.2);
+}
+
+.journal-form {
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+.journal-form-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    margin-top: 10px;
+}
+
+.journal-form-label:first-child {
+    margin-top: 0;
+}
+
+.journal-activity-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.journal-activity-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 2px solid var(--border-color);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.journal-activity-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.journal-activity-btn.selected {
+    border-color: var(--accent-gold);
+    background: rgba(244, 162, 97, 0.15);
+}
+
+.journal-stars {
+    display: flex;
+    gap: 6px;
+}
+
+.journal-star {
+    font-size: 28px;
+    color: var(--border-color);
+    cursor: pointer;
+    transition: color 0.15s;
+    user-select: none;
+}
+
+.journal-star.selected {
+    color: var(--accent-gold);
+}
+
+.journal-star:hover {
+    color: var(--accent-gold);
+}
+
+.journal-notes {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    padding: 10px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.journal-notes:focus {
+    outline: none;
+    border-color: var(--accent-gold);
+}
+
+.journal-form-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.btn-journal-save {
+    flex: 1;
+    background: var(--accent-gold);
+    color: var(--bg-dark);
+    border: none;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.btn-journal-save:hover {
+    opacity: 0.9;
+}
+
+.btn-journal-cancel {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-journal-cancel:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.journal-entries {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.journal-entry {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+}
+
+.journal-entry-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.journal-entry-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.journal-entry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+.journal-entry-date {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.journal-entry-stars {
+    font-size: 12px;
+    color: var(--accent-gold);
+    letter-spacing: 1px;
+}
+
+.journal-entry-notes {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.journal-entry-predicted {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
 /* Dark mode is default, but support light preference */
 @media (prefers-color-scheme: light) {
     /* Keep dark theme for this app - it's meant to be used at night */

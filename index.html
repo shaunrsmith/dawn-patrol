@@ -104,10 +104,26 @@
                                 <span id="surf-air-temp">Air: --</span>
                             </div>
                             <div class="card-forecast" id="surf-forecast">--</div>
+                            <div class="swell-trend" id="surf-swell-trend" style="display: none;">
+                                <div class="swell-trend-label">SWELL TREND</div>
+                                <div class="swell-trend-desc" id="surf-swell-trend-desc">--</div>
+                            </div>
+                            <div class="wind-trend" id="surf-wind-trend" style="display: none;">
+                                <div class="wind-trend-label">WIND TREND</div>
+                                <div class="wind-trend-desc" id="surf-wind-trend-desc">--</div>
+                            </div>
                             <div class="board-call" id="surf-board-call" style="display: none;">
                                 <div class="board-call-label">BOARD CALL</div>
                                 <div class="board-call-name" id="surf-board-name">--</div>
                                 <div class="board-call-reason" id="surf-board-reason">--</div>
+                            </div>
+                            <div class="wetsuit-call" id="surf-wetsuit" style="display: none;">
+                                <div class="wetsuit-call-label">WETSUIT</div>
+                                <div class="wetsuit-call-name" id="surf-wetsuit-name">--</div>
+                            </div>
+                            <div class="arrival-time" id="surf-arrival" style="display: none;">
+                                <span class="arrival-icon">&#9201;</span>
+                                <span class="arrival-text" id="surf-arrival-text">--</span>
                             </div>
                         </div>
                         <div class="card-footer">
@@ -137,6 +153,10 @@
                             <div class="card-detail" id="fish-water-temp">Water: --</div>
                             <div class="fish-species" id="fish-species-list"></div>
                             <div class="card-forecast" id="fish-breakdown">--</div>
+                            <div class="arrival-time" id="fish-arrival" style="display: none;">
+                                <span class="arrival-icon">&#9201;</span>
+                                <span class="arrival-text" id="fish-arrival-text">--</span>
+                            </div>
                         </div>
                         <div class="card-footer">
                             <div class="fish-location">Ventnor Fishing Pier</div>
@@ -157,6 +177,10 @@
                             <div class="card-detail" id="photo-clouds">Cloud cover: --%</div>
                             <div class="card-detail" id="photo-humidity">Humidity: --%</div>
                             <div class="card-detail" id="photo-verdict">--</div>
+                            <div class="arrival-time" id="photo-arrival" style="display: none;">
+                                <span class="arrival-icon">&#9201;</span>
+                                <span class="arrival-text" id="photo-arrival-text">--</span>
+                            </div>
                         </div>
                     </div>
 
@@ -177,13 +201,54 @@
                                 <span class="direction-icon">&#8594;</span>
                                 <span class="direction-text">--</span>
                             </div>
+                            <div class="arrival-time" id="cycle-arrival" style="display: none;">
+                                <span class="arrival-icon">&#9201;</span>
+                                <span class="arrival-text" id="cycle-arrival-text">--</span>
+                            </div>
                         </div>
                     </div>
+                </div>
+
+                <!-- 3-Day Outlook -->
+                <div class="outlook-section" id="outlook-section" style="display: none;">
+                    <h3 class="outlook-title">3-Day Outlook</h3>
+                    <div class="outlook-grid" id="outlook-grid"></div>
                 </div>
 
                 <!-- Last Updated -->
                 <div class="last-updated">
                     Last updated: <span id="last-updated">--</span>
+                </div>
+
+                <!-- Morning Journal -->
+                <div class="journal-section" id="journal-section">
+                    <h3 class="journal-title">Morning Journal</h3>
+                    <button class="btn-journal-toggle" id="journal-toggle-btn" onclick="showLogForm()">+ Log a Session</button>
+                    <div class="journal-form" id="journal-form" style="display: none;">
+                        <div class="journal-form-label">Activity</div>
+                        <div class="journal-activity-buttons" id="journal-activity-buttons">
+                            <button class="journal-activity-btn" data-activity="surf" onclick="selectJournalActivity('surf')">&#127940;</button>
+                            <button class="journal-activity-btn" data-activity="fish" onclick="selectJournalActivity('fish')">&#127907;</button>
+                            <button class="journal-activity-btn" data-activity="cycle" onclick="selectJournalActivity('cycle')">&#128690;</button>
+                            <button class="journal-activity-btn" data-activity="photo" onclick="selectJournalActivity('photo')">&#128247;</button>
+                            <button class="journal-activity-btn" data-activity="gym" onclick="selectJournalActivity('gym')">&#127947;</button>
+                        </div>
+                        <div class="journal-form-label">Rating</div>
+                        <div class="journal-stars" id="journal-stars">
+                            <span class="journal-star" data-star="1" onclick="selectJournalRating(1)">&#9733;</span>
+                            <span class="journal-star" data-star="2" onclick="selectJournalRating(2)">&#9733;</span>
+                            <span class="journal-star" data-star="3" onclick="selectJournalRating(3)">&#9733;</span>
+                            <span class="journal-star" data-star="4" onclick="selectJournalRating(4)">&#9733;</span>
+                            <span class="journal-star" data-star="5" onclick="selectJournalRating(5)">&#9733;</span>
+                        </div>
+                        <div class="journal-form-label">Notes</div>
+                        <textarea class="journal-notes" id="journal-notes" placeholder="How was the session?" rows="3"></textarea>
+                        <div class="journal-form-actions">
+                            <button class="btn-journal-save" onclick="submitJournalEntry()">Save</button>
+                            <button class="btn-journal-cancel" onclick="hideLogForm()">Cancel</button>
+                        </div>
+                    </div>
+                    <div class="journal-entries" id="journal-entries"></div>
                 </div>
 
                 <!-- Refresh Button -->
