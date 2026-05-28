@@ -55,7 +55,11 @@
 
         // Open-Meteo Marine API for wave data (free, no CORS issues)
         marineWaves: (lat, lng) =>
-            `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period&timezone=America/New_York&forecast_days=2&length_unit=imperial`
+            `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lng}&hourly=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period&timezone=America/New_York&forecast_days=2&length_unit=imperial`,
+
+        // NDBC Buoy 44091 (Barnegat, NJ) - closest wave buoy
+        ndbcBuoy: () =>
+            `https://www.ndbc.noaa.gov/data/realtime2/44091.txt`
     };
 
     // ============================================
@@ -67,6 +71,7 @@
         marineData: null,
         noaaTides: null,
         waterTempData: null,
+        buoyData: null,
         scores: {
             surf: 0,
             fish: 0,
@@ -235,6 +240,55 @@
             console.error('Marine data fetch error:', error);
             return null;
         }
+    }
+
+    async function fetchBuoyData() {
+        // Fetch real-time data from NDBC Buoy 44091
+        try {
+            const response = await fetch(API.ndbcBuoy());
+            if (!response.ok) throw new Error('NDBC buoy fetch failed');
+            const text = await response.text();
+            return parseNdbcData(text);
+        } catch (error) {
+            console.warn('Buoy data unavailable (CORS or network):', error.message);
+            return null;
+        }
+    }
+
+    function parseNdbcData(text) {
+        const lines = text.trim().split('\n');
+        // First two lines are headers, data starts at line 3
+        if (lines.length < 3) return null;
+        const headers = lines[0].replace('#', '').trim().split(/\s+/);
+        const values = lines[2].trim().split(/\s+/);
+
+        const get = (name) => {
+            const idx = headers.indexOf(name);
+            if (idx === -1) return null;
+            const val = values[idx];
+            return val === 'MM' ? null : parseFloat(val);
+        };
+
+        const waveHeightM = get('WVHT');
+        const wavePeriod = get('DPD');
+        const waveDir = get('MWD');
+        const waterTempC = get('WTMP');
+        const windSpeed = get('WSPD');
+        const windDir = get('WDIR');
+        const windGust = get('GST');
+
+        return {
+            waveHeight: waveHeightM !== null ? Math.round(waveHeightM * 3.281 * 10) / 10 : null, // meters to feet
+            wavePeriod: wavePeriod,
+            waveDirection: waveDir,
+            waveCardinal: waveDir !== null ? degreesToCardinal(waveDir) : null,
+            waterTemp: waterTempC !== null ? Math.round(waterTempC * 9/5 + 32) : null, // C to F
+            windSpeed: windSpeed !== null ? Math.round(windSpeed * 2.237) : null, // m/s to mph
+            windDirection: windDir,
+            windGust: windGust !== null ? Math.round(windGust * 2.237) : null,
+            stationId: '44091',
+            stationName: 'Buoy 44091 (Barnegat)'
+        };
     }
 
     // ============================================
@@ -703,12 +757,13 @@
 
         try {
             // Fetch all data in parallel
-            const [weather, sunriseData, noaaTides, waterTempData, marineData] = await Promise.all([
+            const [weather, sunriseData, noaaTides, waterTempData, marineData, buoyData] = await Promise.all([
                 fetchWeather(),
                 fetchSunrise(),
                 fetchNoaaTides(),
                 fetchWaterTemp(),
-                fetchMarineData()
+                fetchMarineData(),
+                fetchBuoyData()
             ]);
 
             state.weather = weather;
@@ -716,6 +771,7 @@
             state.noaaTides = noaaTides;
             state.waterTempData = waterTempData;
             state.marineData = marineData;
+            state.buoyData = buoyData;
 
             // Calculate scores
             calculateAllScores();
@@ -831,12 +887,13 @@
             document.getElementById('summary-air-temp').textContent = tempStr;
         }
 
-        // Water temp from NOAA
+        // Water temp - prefer buoy, fall back to NOAA station
         if (state.waterTempData && state.waterTempData.data && state.waterTempData.data.length > 0) {
-            const waterTemp = Math.round(parseFloat(state.waterTempData.data[0].v));
-            document.getElementById('summary-water-temp').textContent = `${waterTemp}°F`;
-            // Also update state for surf card
-            state.waterTempNoaa = waterTemp;
+            state.waterTempNoaa = Math.round(parseFloat(state.waterTempData.data[0].v));
+        }
+        const summaryWaterTemp = (state.buoyData && state.buoyData.waterTemp) || state.waterTempNoaa;
+        if (summaryWaterTemp) {
+            document.getElementById('summary-water-temp').textContent = `${summaryWaterTemp}°F`;
         }
 
         // Tides from NOAA
@@ -861,9 +918,26 @@
             }
             document.getElementById('surf-tide').textContent = tideInfo;
 
-            // Water temp from NOAA
-            if (state.waterTempNoaa) {
-                document.getElementById('surf-water-temp').textContent = `Water: ${state.waterTempNoaa}°F`;
+            // Buoy data (real-time observed)
+            const buoyEl = document.getElementById('surf-buoy');
+            if (state.buoyData) {
+                const b = state.buoyData;
+                const parts = [];
+                if (b.waveHeight !== null) parts.push(`${b.waveHeight}ft`);
+                if (b.wavePeriod !== null) parts.push(`${b.wavePeriod}s`);
+                if (b.waveCardinal) parts.push(b.waveCardinal);
+                buoyEl.textContent = parts.length > 0
+                    ? `Buoy 44091: ${parts.join(' @ ')}`
+                    : 'Buoy 44091: No data';
+            } else {
+                buoyEl.textContent = 'Buoy 44091: Unavailable';
+            }
+
+            // Water temp - prefer buoy, fall back to NOAA station
+            const waterTemp = (state.buoyData && state.buoyData.waterTemp) || state.waterTempNoaa;
+            if (waterTemp) {
+                const source = (state.buoyData && state.buoyData.waterTemp) ? 'Buoy' : 'NOAA';
+                document.getElementById('surf-water-temp').textContent = `Water: ${waterTemp}°F (${source})`;
             }
 
             // Air temp from cycling data (Open-Meteo)
