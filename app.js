@@ -1389,6 +1389,19 @@
 
         // Get recommendation
         state.recommendation = getRecommendation(state.scores, surfScoreData, fishData, cycleData, weatherCondition);
+
+        // Store prediction keyed by the date it's FOR (tomorrow)
+        // so the journal can look it up when logging that morning
+        try {
+            const predictionDate = getTomorrowDate();
+            const prediction = {
+                scores: { ...state.scores },
+                activity: state.recommendation ? state.recommendation.activity : null
+            };
+            localStorage.setItem('dawnPatrol_prediction_' + predictionDate, JSON.stringify(prediction));
+        } catch (e) {
+            // localStorage might be full or unavailable
+        }
     }
 
     // ============================================
@@ -1918,13 +1931,29 @@
         }
 
         const notes = document.getElementById('journal-notes').value.trim();
+        const today = formatLocalDate(new Date());
+
+        // Look up the prediction that was stored FOR today (made last night)
+        let predictedScores = null;
+        let predictedActivity = null;
+        try {
+            const stored = localStorage.getItem('dawnPatrol_prediction_' + today);
+            if (stored) {
+                const prediction = JSON.parse(stored);
+                predictedScores = prediction.scores || null;
+                predictedActivity = prediction.activity || null;
+            }
+        } catch (e) {
+            // fall through with nulls
+        }
+
         const entry = {
-            date: formatLocalDate(new Date()),
+            date: today,
             activity: journalSelectedActivity,
             rating: journalSelectedRating,
             notes: notes,
-            predictedScores: state.scores ? { ...state.scores } : null,
-            predictedActivity: state.recommendation ? state.recommendation.activity : null
+            predictedScores: predictedScores,
+            predictedActivity: predictedActivity
         };
         saveJournalEntry(entry);
         window.hideLogForm();
