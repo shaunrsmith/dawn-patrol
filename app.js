@@ -66,8 +66,9 @@
             `https://services.surfline.com/kbyg/spots/forecasts/wind?spotId=${spotId}&days=2&intervalHours=3`,
 
         // NDBC Buoy 44091 (Barnegat, NJ) - closest wave buoy
+        // Using NOAA ERDDAP for CORS-friendly JSON access
         ndbcBuoy: () =>
-            `https://www.ndbc.noaa.gov/data/realtime2/44091.txt`
+            `https://coastwatch.pfeg.noaa.gov/erddap/tabledap/cwwcNDBCMet.json?station%2Ctime%2Cwd%2Cwspd%2Cgst%2Cwvht%2Cdpd%2Cmwd%2Cwtmp&station=%2244091%22&time%3E=now-2hours&orderBy(%22time%22)`
     };
 
     // ============================================
@@ -258,49 +259,49 @@
     }
 
     async function fetchBuoyData() {
-        // Fetch real-time data from NDBC Buoy 44091
+        // Fetch real-time data from NDBC Buoy 44091 via NOAA ERDDAP (CORS-friendly JSON)
         try {
             const response = await fetch(API.ndbcBuoy());
-            if (!response.ok) throw new Error('NDBC buoy fetch failed');
-            const text = await response.text();
-            return parseNdbcData(text);
+            if (!response.ok) throw new Error('ERDDAP buoy fetch failed');
+            const json = await response.json();
+            return parseErddapData(json);
         } catch (error) {
-            console.warn('Buoy data unavailable (CORS or network):', error.message);
+            console.warn('Buoy data unavailable:', error.message);
             return null;
         }
     }
 
-    function parseNdbcData(text) {
-        const lines = text.trim().split('\n');
-        // First two lines are headers, data starts at line 3
-        if (lines.length < 3) return null;
-        const headers = lines[0].replace('#', '').trim().split(/\s+/);
-        const values = lines[2].trim().split(/\s+/);
+    function parseErddapData(json) {
+        // ERDDAP returns { table: { columnNames: [...], rows: [[...], ...] } }
+        if (!json || !json.table || !json.table.rows || json.table.rows.length === 0) return null;
+
+        const cols = json.table.columnNames;
+        const row = json.table.rows[json.table.rows.length - 1]; // most recent
 
         const get = (name) => {
-            const idx = headers.indexOf(name);
+            const idx = cols.indexOf(name);
             if (idx === -1) return null;
-            const val = values[idx];
-            return val === 'MM' ? null : parseFloat(val);
+            const val = row[idx];
+            return (val === null || val === 'NaN' || val === '') ? null : parseFloat(val);
         };
 
-        const waveHeightM = get('WVHT');
-        const wavePeriod = get('DPD');
-        const waveDir = get('MWD');
-        const waterTempC = get('WTMP');
-        const windSpeed = get('WSPD');
-        const windDir = get('WDIR');
-        const windGust = get('GST');
+        const waveHeightM = get('wvht');
+        const wavePeriod = get('dpd');
+        const waveDir = get('mwd');
+        const waterTempC = get('wtmp');
+        const windSpeedMs = get('wspd');
+        const windDir = get('wd');
+        const windGustMs = get('gst');
 
         return {
-            waveHeight: waveHeightM !== null ? Math.round(waveHeightM * 3.281 * 10) / 10 : null, // meters to feet
+            waveHeight: waveHeightM !== null ? Math.round(waveHeightM * 3.281 * 10) / 10 : null,
             wavePeriod: wavePeriod,
             waveDirection: waveDir,
             waveCardinal: waveDir !== null ? degreesToCardinal(waveDir) : null,
-            waterTemp: waterTempC !== null ? Math.round(waterTempC * 9/5 + 32) : null, // C to F
-            windSpeed: windSpeed !== null ? Math.round(windSpeed * 2.237) : null, // m/s to mph
+            waterTemp: waterTempC !== null ? Math.round(waterTempC * 9/5 + 32) : null,
+            windSpeed: windSpeedMs !== null ? Math.round(windSpeedMs * 2.237) : null,
             windDirection: windDir,
-            windGust: windGust !== null ? Math.round(windGust * 2.237) : null,
+            windGust: windGustMs !== null ? Math.round(windGustMs * 2.237) : null,
             stationId: '44091',
             stationName: 'Buoy 44091 (Barnegat)'
         };
