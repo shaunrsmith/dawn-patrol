@@ -66,8 +66,11 @@
             `https://services.surfline.com/kbyg/spots/forecasts/wind?spotId=${spotId}&days=2&intervalHours=3`,
 
         // NDBC Buoy 44091 (Barnegat, NJ) - closest wave buoy
-        // Using NOAA ERDDAP for CORS-friendly JSON access
-        ndbcBuoy: () =>
+        // Primary: CORS proxy wrapping NDBC text data
+        // Fallback: NOAA ERDDAP JSON endpoint
+        ndbcBuoyProxy: () =>
+            `https://corsproxy.io/?url=https://www.ndbc.noaa.gov/data/realtime2/44091.txt`,
+        ndbcBuoyErddap: () =>
             `https://coastwatch.pfeg.noaa.gov/erddap/tabledap/cwwcNDBCMet.json?station%2Ctime%2Cwd%2Cwspd%2Cgst%2Cwvht%2Cdpd%2Cmwd%2Cwtmp&station=%2244091%22&time%3E=now-2hours&orderBy(%22time%22)`
     };
 
@@ -259,16 +262,69 @@
     }
 
     async function fetchBuoyData() {
-        // Fetch real-time data from NDBC Buoy 44091 via NOAA ERDDAP (CORS-friendly JSON)
+        // Try CORS proxy first, then ERDDAP, then direct NDBC
         try {
-            const response = await fetch(API.ndbcBuoy());
-            if (!response.ok) throw new Error('ERDDAP buoy fetch failed');
-            const json = await response.json();
-            return parseErddapData(json);
-        } catch (error) {
-            console.warn('Buoy data unavailable:', error.message);
-            return null;
+            const response = await fetch(API.ndbcBuoyProxy());
+            if (!response.ok) throw new Error('Proxy fetch failed');
+            const text = await response.text();
+            const result = parseNdbcText(text);
+            if (result) return result;
+        } catch (e) {
+            console.warn('Buoy proxy failed:', e.message);
         }
+        try {
+            const response = await fetch(API.ndbcBuoyErddap());
+            if (!response.ok) throw new Error('ERDDAP fetch failed');
+            const json = await response.json();
+            const result = parseErddapData(json);
+            if (result) return result;
+        } catch (e) {
+            console.warn('Buoy ERDDAP failed:', e.message);
+        }
+        try {
+            const response = await fetch(`https://www.ndbc.noaa.gov/data/realtime2/44091.txt`);
+            if (!response.ok) throw new Error('Direct NDBC failed');
+            const text = await response.text();
+            return parseNdbcText(text);
+        } catch (e) {
+            console.warn('Buoy direct failed:', e.message);
+        }
+        return null;
+    }
+
+    function parseNdbcText(text) {
+        const lines = text.trim().split('\n');
+        if (lines.length < 3) return null;
+        const headers = lines[0].replace('#', '').trim().split(/\s+/);
+        const values = lines[2].trim().split(/\s+/);
+
+        const get = (name) => {
+            const idx = headers.indexOf(name);
+            if (idx === -1) return null;
+            const val = values[idx];
+            return val === 'MM' ? null : parseFloat(val);
+        };
+
+        const waveHeightM = get('WVHT');
+        const wavePeriod = get('DPD');
+        const waveDir = get('MWD');
+        const waterTempC = get('WTMP');
+        const windSpeedMs = get('WSPD');
+        const windDir = get('WDIR');
+        const windGustMs = get('GST');
+
+        return {
+            waveHeight: waveHeightM !== null ? Math.round(waveHeightM * 3.281 * 10) / 10 : null,
+            wavePeriod: wavePeriod,
+            waveDirection: waveDir,
+            waveCardinal: waveDir !== null ? degreesToCardinal(waveDir) : null,
+            waterTemp: waterTempC !== null ? Math.round(waterTempC * 9/5 + 32) : null,
+            windSpeed: windSpeedMs !== null ? Math.round(windSpeedMs * 2.237) : null,
+            windDirection: windDir,
+            windGust: windGustMs !== null ? Math.round(windGustMs * 2.237) : null,
+            stationId: '44091',
+            stationName: 'Buoy 44091 (Barnegat)'
+        };
     }
 
     function parseErddapData(json) {
