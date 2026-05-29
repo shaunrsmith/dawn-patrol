@@ -1326,6 +1326,43 @@
         }
     }
 
+    function getCalibration() {
+        const MIN_ENTRIES = 3;
+        try {
+            const entries = getJournalEntries();
+            if (entries.length === 0) return null;
+
+            const activityData = {};
+            for (const entry of entries) {
+                if (!entry.predictedScores || !entry.activity || !entry.rating) continue;
+                const act = entry.activity;
+                if (act === 'gym') continue;
+                const predicted = entry.predictedScores[act];
+                if (predicted == null) continue;
+                // User rates 1-5, predicted is 1-10. Scale rating to 1-10.
+                const scaledRating = entry.rating * 2;
+                if (!activityData[act]) activityData[act] = [];
+                activityData[act].push(scaledRating - predicted);
+            }
+
+            const calibration = {};
+            for (const act of ['surf', 'fish', 'photo', 'cycle']) {
+                const diffs = activityData[act];
+                if (diffs && diffs.length >= MIN_ENTRIES) {
+                    const avg = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+                    // Cap adjustment at +/- 3 to avoid wild swings
+                    calibration[act] = Math.max(-3, Math.min(3, Math.round(avg * 10) / 10));
+                } else {
+                    calibration[act] = null;
+                }
+            }
+
+            return Object.values(calibration).some(v => v !== null) ? calibration : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     function calculateAllScores() {
         // Determine weather conditions first
         const weatherCondition = state.weather ? getMorningWeatherCondition(state.weather) : null;
@@ -1373,6 +1410,16 @@
         // Photos only recommended if actually a good sunrise (score >= 6 pre-penalty)
         if (state.scores.photo < 6) {
             state.scores.photo = Math.min(state.scores.photo, 4);
+        }
+
+        // Apply learned calibration from journal history
+        const calibration = getCalibration();
+        if (calibration) {
+            for (const activity of ['surf', 'fish', 'photo', 'cycle']) {
+                if (calibration[activity] !== null) {
+                    state.scores[activity] = Math.max(1, Math.min(10, Math.round(state.scores[activity] + calibration[activity])));
+                }
+            }
         }
 
         // Arrival times
@@ -1882,6 +1929,39 @@
                 '</div>';
             container.appendChild(div);
         }
+
+        // Show calibration status
+        const calibration = getCalibration();
+        const allEntries = getJournalEntries();
+        const statusDiv = document.createElement('div');
+        statusDiv.className = 'journal-calibration-status';
+        if (calibration) {
+            const adjustments = [];
+            for (const act of ['surf', 'fish', 'photo', 'cycle']) {
+                if (calibration[act] !== null) {
+                    const sign = calibration[act] > 0 ? '+' : '';
+                    const label = act.charAt(0).toUpperCase() + act.slice(1);
+                    adjustments.push(label + ' ' + sign + calibration[act].toFixed(1));
+                }
+            }
+            statusDiv.innerHTML = '&#9881; Learning active &middot; ' + adjustments.join(', ');
+        } else {
+            const countByActivity = {};
+            for (const e of allEntries) {
+                if (e.predictedScores && e.activity && e.activity !== 'gym') {
+                    countByActivity[e.activity] = (countByActivity[e.activity] || 0) + 1;
+                }
+            }
+            const needed = [];
+            for (const act of ['surf', 'fish', 'photo', 'cycle']) {
+                const count = countByActivity[act] || 0;
+                if (count < 3) needed.push(act.charAt(0).toUpperCase() + act.slice(1) + ' (' + count + '/3)');
+            }
+            if (needed.length > 0) {
+                statusDiv.innerHTML = '&#9881; Collecting data &middot; ' + needed.join(', ');
+            }
+        }
+        container.appendChild(statusDiv);
     }
 
     function escapeHtml(text) {
