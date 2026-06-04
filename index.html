@@ -82,6 +82,12 @@
                     </div>
                 </div>
 
+                <!-- Tide Chart -->
+                <div class="tide-chart-container" id="tide-chart-container" style="display: none;">
+                    <div class="tide-chart-label">MORNING TIDE</div>
+                    <svg id="tide-chart" viewBox="0 0 320 100" class="tide-chart-svg" preserveAspectRatio="xMidYMid meet"></svg>
+                </div>
+
                 <!-- Activity Cards -->
                 <div class="activity-cards">
                     <!-- Surfing Card -->
@@ -196,6 +202,18 @@
                         </div>
                         <div class="card-body">
                             <div class="card-detail" id="cycle-wind">Wind: -- mph</div>
+                            <div class="wind-compass" id="cycle-compass" style="display: none;">
+                                <svg viewBox="0 0 80 80" class="compass-svg">
+                                    <circle cx="40" cy="40" r="36" class="compass-ring"/>
+                                    <text x="40" y="14" class="compass-label">N</text>
+                                    <text x="68" y="43" class="compass-label">E</text>
+                                    <text x="40" y="74" class="compass-label">S</text>
+                                    <text x="12" y="43" class="compass-label">W</text>
+                                    <line x1="40" y1="40" x2="40" y2="12" class="compass-arrow" id="cycle-compass-arrow"/>
+                                    <circle cx="40" cy="40" r="3" class="compass-center"/>
+                                </svg>
+                                <div class="compass-speed" id="cycle-compass-speed">--</div>
+                            </div>
                             <div class="card-detail" id="cycle-temp">Temperature: --</div>
                             <div class="card-direction" id="cycle-direction">
                                 <span class="direction-icon">&#8594;</span>

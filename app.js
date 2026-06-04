@@ -1519,6 +1519,7 @@
         if (state.noaaTides && state.noaaTides.predictions) {
             const tideStr = getNoaaTideInfo(state.noaaTides.predictions);
             document.getElementById('summary-tides').textContent = tideStr;
+            renderTideChart(state.noaaTides.predictions);
         }
 
         // Surf card
@@ -1663,6 +1664,20 @@
             dirIcon.innerHTML = '&#8595;'; // Down arrow (south)
         } else {
             dirIcon.innerHTML = '&#8596;'; // Both ways
+        }
+
+        // Wind compass
+        if (state.cycleData.windDirection !== undefined) {
+            const arrow = document.getElementById('cycle-compass-arrow');
+            const compassEl = document.getElementById('cycle-compass');
+            if (arrow && compassEl) {
+                // Wind direction is where it comes FROM, so arrow points that direction
+                const deg = state.cycleData.windDirection;
+                arrow.setAttribute('transform', `rotate(${deg}, 40, 40)`);
+                const speedLabel = state.cycleData.windSpeed + ' mph ' + state.cycleData.windCardinal;
+                document.getElementById('cycle-compass-speed').textContent = speedLabel;
+                compassEl.style.display = 'flex';
+            }
         }
 
         // Arrival times
@@ -1854,6 +1869,140 @@
         }
 
         return morningTides.map(t => `${t.type} ${t.time}`).join(', ');
+    }
+
+    // ============================================
+    // Tide Chart
+    // ============================================
+    function renderTideChart(predictions) {
+        const svg = document.getElementById('tide-chart');
+        const container = document.getElementById('tide-chart-container');
+        if (!svg || !container) return;
+
+        const tomorrow = getTomorrowDate();
+        // Gather all hi/lo for tomorrow (full day for context)
+        const tidePoints = [];
+        for (const pred of predictions) {
+            if (pred.type !== 'H' && pred.type !== 'L') continue;
+            const [dateStr, timeStr] = pred.t.split(' ');
+            if (dateStr !== tomorrow) continue;
+            const [h, m] = timeStr.split(':').map(Number);
+            tidePoints.push({
+                hour: h + m / 60,
+                height: parseFloat(pred.v),
+                type: pred.type,
+                timeStr: timeStr
+            });
+        }
+
+        // Also grab the last tide from the day before and first from day after for smooth edges
+        const yesterdayDate = new Date(tomorrow + 'T12:00:00');
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const dayAfter = new Date(tomorrow + 'T12:00:00');
+        dayAfter.setDate(dayAfter.getDate() + 1);
+        const yesterdayStr = formatLocalDate(yesterdayDate);
+        const dayAfterStr = formatLocalDate(dayAfter);
+
+        let lastYesterday = null;
+        let firstDayAfter = null;
+        for (const pred of predictions) {
+            if (pred.type !== 'H' && pred.type !== 'L') continue;
+            const [dateStr] = pred.t.split(' ');
+            if (dateStr === yesterdayStr) {
+                const [h, m] = pred.t.split(' ')[1].split(':').map(Number);
+                lastYesterday = { hour: h + m / 60 - 24, height: parseFloat(pred.v), type: pred.type };
+            }
+            if (dateStr === dayAfterStr && !firstDayAfter) {
+                const [h, m] = pred.t.split(' ')[1].split(':').map(Number);
+                firstDayAfter = { hour: h + m / 60 + 24, height: parseFloat(pred.v), type: pred.type };
+            }
+        }
+
+        const allPoints = [];
+        if (lastYesterday) allPoints.push(lastYesterday);
+        allPoints.push(...tidePoints);
+        if (firstDayAfter) allPoints.push(firstDayAfter);
+
+        if (allPoints.length < 2) {
+            container.style.display = 'none';
+            return;
+        }
+
+        // Chart window: 4 AM to 11 AM
+        const startHour = 4;
+        const endHour = 11;
+        const chartW = 320;
+        const chartH = 80;
+        const padTop = 8;
+        const padBot = 20;
+
+        // Interpolate tide heights using cosine between hi/lo points
+        function getHeightAt(hour) {
+            for (let i = 0; i < allPoints.length - 1; i++) {
+                if (hour >= allPoints[i].hour && hour <= allPoints[i + 1].hour) {
+                    const p0 = allPoints[i];
+                    const p1 = allPoints[i + 1];
+                    const t = (hour - p0.hour) / (p1.hour - p0.hour);
+                    // Cosine interpolation for natural tide curve
+                    const cos = (1 - Math.cos(t * Math.PI)) / 2;
+                    return p0.height + (p1.height - p0.height) * cos;
+                }
+            }
+            return allPoints[0].height;
+        }
+
+        // Sample points across the window
+        const samples = [];
+        const steps = 60;
+        for (let i = 0; i <= steps; i++) {
+            const hour = startHour + (endHour - startHour) * (i / steps);
+            samples.push({ hour, height: getHeightAt(hour) });
+        }
+
+        const minH = Math.min(...samples.map(s => s.height));
+        const maxH = Math.max(...samples.map(s => s.height));
+        const range = maxH - minH || 1;
+
+        function toX(hour) { return ((hour - startHour) / (endHour - startHour)) * chartW; }
+        function toY(height) { return padTop + (chartH - padTop - padBot) * (1 - (height - minH) / range); }
+
+        // Build the SVG
+        let svgContent = '';
+
+        // Hour grid lines and labels
+        for (let h = startHour; h <= endHour; h++) {
+            const x = toX(h);
+            svgContent += `<line x1="${x}" y1="${padTop}" x2="${x}" y2="${chartH - padBot}" class="tide-grid"/>`;
+            const label = h > 12 ? (h - 12) : h;
+            svgContent += `<text x="${x}" y="${chartH - 4}" class="tide-hour-label">${label}${h < 12 ? 'a' : 'p'}</text>`;
+        }
+
+        // Tide curve (filled area)
+        let pathD = `M ${toX(samples[0].hour)} ${toY(samples[0].height)}`;
+        for (let i = 1; i < samples.length; i++) {
+            pathD += ` L ${toX(samples[i].hour)} ${toY(samples[i].height)}`;
+        }
+        const fillD = pathD + ` L ${toX(samples[samples.length - 1].hour)} ${chartH - padBot} L ${toX(samples[0].hour)} ${chartH - padBot} Z`;
+        svgContent += `<path d="${fillD}" class="tide-fill"/>`;
+        svgContent += `<path d="${pathD}" class="tide-line"/>`;
+
+        // Mark hi/lo points that fall in the window
+        for (const pt of tidePoints) {
+            if (pt.hour >= startHour && pt.hour <= endHour) {
+                const x = toX(pt.hour);
+                const y = toY(pt.height);
+                svgContent += `<circle cx="${x}" cy="${y}" r="3.5" class="tide-point"/>`;
+                const [h, m] = pt.timeStr.split(':');
+                const hourNum = parseInt(h, 10);
+                const ampm = hourNum >= 12 ? 'p' : 'a';
+                const hour12 = hourNum > 12 ? hourNum - 12 : hourNum;
+                const labelY = pt.type === 'H' ? y - 7 : y + 13;
+                svgContent += `<text x="${x}" y="${labelY}" class="tide-point-label">${pt.type === 'H' ? 'H' : 'L'} ${hour12}:${m}${ampm}</text>`;
+            }
+        }
+
+        svg.innerHTML = svgContent;
+        container.style.display = 'block';
     }
 
     // ============================================
