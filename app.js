@@ -708,7 +708,8 @@
         if (period < 5) periodScore = 2;
         else if (period < 7) periodScore = 4;
         else if (period < 9) periodScore = 6;
-        else if (period < 10) periodScore = 9;
+        else if (period < 10) periodScore = 8;
+        else if (period < 11) periodScore = 9;
         else periodScore = 10;
 
         // Use Surfline wind data if available, else fall back to ECMWF
@@ -818,7 +819,8 @@
         if (period < 5) periodScore = 2;
         else if (period < 7) periodScore = 4;
         else if (period < 9) periodScore = 6;
-        else if (period < 10) periodScore = 9;
+        else if (period < 10) periodScore = 8;
+        else if (period < 11) periodScore = 9;
         else periodScore = 10;
 
         let windScore = 5;
