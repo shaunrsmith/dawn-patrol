@@ -970,6 +970,58 @@ body {
     /* Keep dark theme for this app - it's meant to be used at night */
 }
 
+/* NWS Weather Alerts */
+.nws-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+}
+
+.nws-alert.alert-severe {
+    background: rgba(231, 76, 60, 0.15);
+    border: 1px solid rgba(231, 76, 60, 0.4);
+}
+
+.nws-alert.alert-moderate {
+    background: rgba(230, 126, 34, 0.15);
+    border: 1px solid rgba(230, 126, 34, 0.3);
+}
+
+.alert-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.alert-severe .alert-icon {
+    color: var(--accent-red);
+}
+
+.alert-moderate .alert-icon {
+    color: var(--accent-orange);
+}
+
+.alert-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.alert-event {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.alert-headline {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
 /* Wind Compass */
 .wind-compass {
     display: flex;

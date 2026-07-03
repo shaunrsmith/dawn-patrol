@@ -1,5 +1,5 @@
 // Dawn Patrol Service Worker
-const CACHE_NAME = 'dawn-patrol-v11';
+const CACHE_NAME = 'dawn-patrol-v12';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -40,7 +40,8 @@ self.addEventListener('fetch', (event) => {
         url.hostname.includes('open-meteo.com') ||
         url.hostname.includes('marine-api.open-meteo.com') ||
         url.hostname.includes('tidesandcurrents.noaa.gov') ||
-        url.hostname.includes('sunrise-sunset.org')) {
+        url.hostname.includes('sunrise-sunset.org') ||
+        url.hostname.includes('api.weather.gov')) {
         event.respondWith(
             fetch(event.request)
                 .then((response) => {

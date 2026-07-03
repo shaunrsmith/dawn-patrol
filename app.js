@@ -71,7 +71,11 @@
         ndbcBuoyProxy: () =>
             `https://corsproxy.io/?url=https://www.ndbc.noaa.gov/data/realtime2/44091.txt`,
         ndbcBuoyErddap: () =>
-            `https://coastwatch.pfeg.noaa.gov/erddap/tabledap/cwwcNDBCMet.json?station%2Ctime%2Cwd%2Cwspd%2Cgst%2Cwvht%2Cdpd%2Cmwd%2Cwtmp&station=%2244091%22&time%3E=now-2hours&orderBy(%22time%22)`
+            `https://coastwatch.pfeg.noaa.gov/erddap/tabledap/cwwcNDBCMet.json?station%2Ctime%2Cwd%2Cwspd%2Cgst%2Cwvht%2Cdpd%2Cmwd%2Cwtmp&station=%2244091%22&time%3E=now-2hours&orderBy(%22time%22)`,
+
+        // NWS Weather Alerts for Ventnor area
+        nwsAlerts: (lat, lng) =>
+            `https://api.weather.gov/alerts/active?point=${lat},${lng}&status=actual`
     };
 
     // ============================================
@@ -85,6 +89,7 @@
         waterTempData: null,
         buoyData: null,
         surflineData: null,
+        nwsAlerts: [],
         scores: {
             surf: 0,
             fish: 0,
@@ -189,7 +194,9 @@
             isWet: totalPrecip > 0.05 || totalSnow > 0.1,
             isRain: totalPrecip > 0.2,
             isPouring: totalPrecip > 0.5,
-            isSuperWindy: windSpeed > 25 || windGusts > 35
+            isSuperWindy: windSpeed > 25 || windGusts > 35,
+            isExtremeHeat: feelsLike !== null && feelsLike >= 100,
+            isExtremeCold: feelsLike !== null && feelsLike <= 15
         };
     }
 
@@ -258,6 +265,27 @@
         } catch (error) {
             console.error('Marine data fetch error:', error);
             return null;
+        }
+    }
+
+    async function fetchNWSAlerts() {
+        try {
+            const response = await fetch(API.nwsAlerts(CONFIG.latitude, CONFIG.longitude), {
+                headers: { 'User-Agent': 'DawnPatrol/1.0 (dawn-patrol-app)' }
+            });
+            if (!response.ok) return [];
+            const data = await response.json();
+            if (!data.features || data.features.length === 0) return [];
+            return data.features.map(f => ({
+                event: f.properties.event,
+                severity: f.properties.severity,
+                headline: f.properties.headline,
+                description: f.properties.description,
+                expires: f.properties.expires
+            }));
+        } catch (error) {
+            console.error('NWS Alerts fetch error:', error);
+            return [];
         }
     }
 
@@ -759,6 +787,19 @@
         const periodStr = period > 0 ? `${Math.round(period)}s` : '';
         const dirStr = sl.swellCardinal || degreesToCardinal(direction);
 
+        // Wind type for display
+        let surfWindType = 'Cross-shore';
+        if (sl.wind && sl.wind.directionType) {
+            surfWindType = sl.wind.directionType;
+        } else if (weatherData && weatherData.hourly) {
+            const wxi = getMorningHourIndex(weatherData.hourly.time, getTomorrowDate());
+            if (wxi !== -1) {
+                const wd = weatherData.hourly.wind_direction_10m[wxi] || 0;
+                if (wd >= 250 && wd <= 320) surfWindType = 'Offshore';
+                else if (wd >= 45 && wd <= 135) surfWindType = 'Onshore';
+            }
+        }
+
         return {
             score: Math.min(10, Math.max(1, finalScore)),
             waveHeight: waveHeight,
@@ -768,6 +809,7 @@
             heightScore,
             periodScore,
             windScore,
+            windType: surfWindType,
             source: 'Surfline'
         };
     }
@@ -839,6 +881,17 @@
             }
         }
 
+        // Determine wind type for display
+        let surfWindType = 'Cross-shore';
+        if (weatherData && weatherData.hourly) {
+            const wxi = getMorningHourIndex(weatherData.hourly.time, tomorrow);
+            if (wxi !== -1) {
+                const wd = weatherData.hourly.wind_direction_10m[wxi] || 0;
+                if (wd >= 250 && wd <= 320) surfWindType = 'Offshore';
+                else if (wd >= 45 && wd <= 135) surfWindType = 'Onshore';
+            }
+        }
+
         const finalScore = Math.round((heightScore * 0.4) + (periodScore * 0.3) + (windScore * 0.3));
         const heightStr = `${waveHeight.toFixed(1)}ft`;
         const periodStr = period > 0 ? `${Math.round(period)}s` : '';
@@ -853,6 +906,7 @@
             heightScore,
             periodScore,
             windScore,
+            windType: surfWindType,
             source: 'Open-Meteo'
         };
     }
@@ -1116,25 +1170,28 @@
 
         // Determine cycling direction
         // Wind direction is where it comes FROM
-        // North wind (315-45): Ride to AC first, return with wind at back
-        // South wind (135-225): Ride to Longport first, return with wind at back
+        // Shore runs N-S, ocean is to the east
+        // North wind (315-45): Headwind going to AC, ride north first
+        // South wind (135-225): Headwind going to Longport, ride south first
+        // East wind (45-135): Onshore (from ocean), crosswind on boardwalk
+        // West wind (225-315): Offshore (from land), crosswind on boardwalk
         let direction;
         let directionText;
 
         const normalizedDir = ((windDirection % 360) + 360) % 360;
 
         if ((normalizedDir >= 315 || normalizedDir <= 45)) {
-            // North wind - go north first (AC)
             direction = 'ac';
-            directionText = 'Go to Atlantic City first, wind at your back coming home';
+            directionText = 'Headwind north — ride to AC first, tailwind home';
         } else if (normalizedDir >= 135 && normalizedDir <= 225) {
-            // South wind - go south first (Longport)
             direction = 'longport';
-            directionText = 'Go to Longport first, wind at your back coming home';
+            directionText = 'Headwind south — ride to Longport first, tailwind home';
+        } else if (normalizedDir > 45 && normalizedDir < 135) {
+            direction = 'onshore';
+            directionText = 'Onshore crosswind — either direction works';
         } else {
-            // East or West - either way
-            direction = 'either';
-            directionText = 'Wind is cross-shore, either direction works';
+            direction = 'offshore';
+            directionText = 'Offshore crosswind — either direction works';
         }
 
         return {
@@ -1243,6 +1300,26 @@
                 activity: 'HIT THE GYM',
                 detail: gymDetail,
                 icon: '&#127947;',
+                runnerUp: surf >= 5 ? `Or: GO SURF (${surf}/10) — you're already wet` : null
+            };
+        }
+
+        // Extreme heat = gym, but surfing is still an option
+        if (weatherCondition && weatherCondition.isExtremeHeat) {
+            return {
+                activity: 'HIT THE GYM',
+                detail: `Extreme heat — Feels like ${weatherCondition.feelsLike}°F`,
+                icon: '&#127947;',
+                runnerUp: surf >= 4 ? `Or: GO SURF (${surf}/10) — cool off in the water` : null
+            };
+        }
+
+        // Extreme cold = gym
+        if (weatherCondition && weatherCondition.isExtremeCold) {
+            return {
+                activity: 'HIT THE GYM',
+                detail: `Dangerously cold — Feels like ${weatherCondition.feelsLike}°F`,
+                icon: '&#127947;',
                 runnerUp: null
             };
         }
@@ -1296,14 +1373,15 @@
 
         try {
             // Fetch all data in parallel
-            const [weather, sunriseData, noaaTides, waterTempData, marineData, buoyData, surflineData] = await Promise.all([
+            const [weather, sunriseData, noaaTides, waterTempData, marineData, buoyData, surflineData, nwsAlerts] = await Promise.all([
                 fetchWeather(),
                 fetchSunrise(),
                 fetchNoaaTides(),
                 fetchWaterTemp(),
                 fetchMarineData(),
                 fetchBuoyData(),
-                fetchSurflineData()
+                fetchSurflineData(),
+                fetchNWSAlerts()
             ]);
 
             state.weather = weather;
@@ -1313,6 +1391,7 @@
             state.marineData = marineData;
             state.buoyData = buoyData;
             state.surflineData = surflineData;
+            state.nwsAlerts = nwsAlerts;
 
             // Calculate scores
             calculateAllScores();
@@ -1494,6 +1573,30 @@
             runnerUpEl.style.display = 'none';
         }
 
+        // NWS Weather Alerts
+        const alertContainer = document.getElementById('nws-alerts');
+        if (alertContainer) {
+            alertContainer.innerHTML = '';
+            if (state.nwsAlerts && state.nwsAlerts.length > 0) {
+                for (const alert of state.nwsAlerts) {
+                    const div = document.createElement('div');
+                    const severityClass = alert.severity === 'Extreme' || alert.severity === 'Severe'
+                        ? 'alert-severe' : 'alert-moderate';
+                    div.className = `nws-alert ${severityClass}`;
+                    div.innerHTML =
+                        '<span class="alert-icon">&#9888;</span>' +
+                        '<div class="alert-body">' +
+                            '<div class="alert-event">' + escapeHtml(alert.event) + '</div>' +
+                            '<div class="alert-headline">' + escapeHtml(alert.headline || '') + '</div>' +
+                        '</div>';
+                    alertContainer.appendChild(div);
+                }
+                alertContainer.style.display = 'block';
+            } else {
+                alertContainer.style.display = 'none';
+            }
+        }
+
         // Conditions Summary
         // Weather condition
         if (state.weatherCondition) {
@@ -1531,7 +1634,9 @@
         if (state.surfScoreData) {
             const source = state.surfScoreData.source || 'Open-Meteo';
             document.getElementById('surf-best-spot').textContent = `Ventnor Area (${source})`;
-            document.getElementById('surf-conditions').textContent = state.surfScoreData.details;
+            const windTypeLabel = state.surfScoreData.windType || '';
+            document.getElementById('surf-conditions').textContent =
+                state.surfScoreData.details + (windTypeLabel ? ` — ${windTypeLabel}` : '');
 
             // Get tide info from NOAA
             let tideInfo = 'Check tide times';
@@ -1664,6 +1769,10 @@
             dirIcon.innerHTML = '&#8593;'; // Up arrow (north)
         } else if (state.cycleData.direction === 'longport') {
             dirIcon.innerHTML = '&#8595;'; // Down arrow (south)
+        } else if (state.cycleData.direction === 'onshore') {
+            dirIcon.innerHTML = '&#8592;'; // Left arrow (from ocean/east)
+        } else if (state.cycleData.direction === 'offshore') {
+            dirIcon.innerHTML = '&#8594;'; // Right arrow (toward ocean/west)
         } else {
             dirIcon.innerHTML = '&#8596;'; // Both ways
         }
