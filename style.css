@@ -586,6 +586,29 @@ body {
     border: 1px solid rgba(46, 204, 113, 0.2);
 }
 
+/* Cycling Kit */
+.kit-call {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(46, 204, 113, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(46, 204, 113, 0.2);
+}
+
+.kit-call-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--accent-green);
+    margin-bottom: 4px;
+}
+
+.kit-call-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
 .wetsuit-call-label {
     font-size: 10px;
     font-weight: 600;

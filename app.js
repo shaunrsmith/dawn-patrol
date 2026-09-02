@@ -497,6 +497,18 @@
     // ============================================
     // Wetsuit Recommendation
     // ============================================
+    function getCyclingKit(feelsLike, windMph) {
+        const t = windMph > 12 ? feelsLike - 5 : feelsLike;
+        if (t < 20) return 'Double thermals, heavy coat, balaclava, insulated boots';
+        if (t < 30) return 'Double bottoms, thermal top, heavy coat, balaclava, gloves';
+        if (t < 40) return 'Thermals top and bottom, heavy coat, beanie, gloves';
+        if (t < 50) return 'Thermal top, pants, winter coat, beanie';
+        if (t < 60) return 'Pants, hoodie, light jacket';
+        if (t < 70) return 'Pants, hoodie';
+        if (t < 79) return 'Shorts, hoodie';
+        return 'Shorts, light top, sun hat';
+    }
+
     function getWetsuitRecommendation(waterTempF) {
         if (waterTempF >= 72) return 'Trunks';
         if (waterTempF >= 65) return 'Springsuit or 3/2';
@@ -1762,6 +1774,14 @@
             : `Temperature: ${state.cycleData.temp}°F`;
         document.getElementById('cycle-temp').textContent = cycleTempStr;
         document.querySelector('.direction-text').textContent = state.cycleData.directionText;
+
+        // What to wear
+        const kitEl = document.getElementById('cycle-kit');
+        if (kitEl && state.cycleData.feelsLike !== undefined) {
+            document.getElementById('cycle-kit-text').textContent =
+                getCyclingKit(state.cycleData.feelsLike, state.cycleData.windSpeed);
+            kitEl.style.display = 'block';
+        }
 
         // Update direction arrow
         const dirIcon = document.querySelector('.direction-icon');
