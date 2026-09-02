@@ -497,7 +497,7 @@
     // ============================================
     // Wetsuit Recommendation
     // ============================================
-    function getCyclingKit(feelsLike, windMph) {
+    function getOutdoorKit(feelsLike, windMph) {
         const t = windMph > 12 ? feelsLike - 5 : feelsLike;
         if (t < 20) return 'Double thermals, heavy coat, balaclava, insulated boots';
         if (t < 30) return 'Double bottoms, thermal top, heavy coat, balaclava, gloves';
@@ -1753,6 +1753,17 @@
             // Score breakdown
             document.getElementById('fish-breakdown').textContent =
                 `Moon: ${state.fishData.solunarScore}/10 | Tide: ${state.fishData.tideScore}/10 | Pressure: ${state.fishData.pressureScore}/10`;
+
+            // What to wear
+            const fishFeelsLike = (state.weatherCondition && state.weatherCondition.feelsLike !== null)
+                ? state.weatherCondition.feelsLike
+                : (state.cycleData ? state.cycleData.feelsLike : undefined);
+            const fishKitEl = document.getElementById('fish-kit');
+            if (fishKitEl && fishFeelsLike !== undefined && fishFeelsLike !== null) {
+                document.getElementById('fish-kit-text').textContent =
+                    getOutdoorKit(fishFeelsLike, state.fishData.windSpeed || 0);
+                fishKitEl.style.display = 'block';
+            }
         }
 
         // Photo card
@@ -1779,7 +1790,7 @@
         const kitEl = document.getElementById('cycle-kit');
         if (kitEl && state.cycleData.feelsLike !== undefined) {
             document.getElementById('cycle-kit-text').textContent =
-                getCyclingKit(state.cycleData.feelsLike, state.cycleData.windSpeed);
+                getOutdoorKit(state.cycleData.feelsLike, state.cycleData.windSpeed);
             kitEl.style.display = 'block';
         }
 
