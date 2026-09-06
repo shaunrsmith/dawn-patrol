@@ -23,7 +23,8 @@
             { name: 'Brigantine', id: '5842041f4e65fad6a7708a0b', lat: 39.4101, lng: -74.3645 }
         ],
 
-        // Morning hours to check (6 AM - 9 AM)
+        // Morning window. Defaults here; reset from tomorrow's sunrise on load
+        // (5-9 in summer, sliding to 6-9 or 7-10 as sunrise gets later).
         morningStartHour: 6,
         morningEndHour: 9,
 
@@ -154,24 +155,48 @@
         return -1;
     }
 
+    function getMorningHourIndices(hourlyTimes, targetDate) {
+        // Every hourly index inside the morning window for the target date
+        const indices = [];
+        for (let i = 0; i < hourlyTimes.length; i++) {
+            const time = new Date(hourlyTimes[i]);
+            if (formatLocalDate(time) !== targetDate) continue;
+            const hour = time.getHours();
+            if (hour >= CONFIG.morningStartHour && hour <= CONFIG.morningEndHour) indices.push(i);
+        }
+        return indices;
+    }
+
     function getMorningWeatherCondition(weather, targetDate) {
-        // Determine precipitation and weather conditions for a target morning
+        // Determine precipitation and weather conditions for a target morning.
+        // Wind, gusts, and feels-like use the WORST hour in the window, not the
+        // first: the first hour is the calmest and coolest of the day, and
+        // sampling it alone meant the gym triggers never fired.
         const tomorrow = targetDate || getTomorrowDate();
-        const hourIndex = getMorningHourIndex(weather.hourly.time, tomorrow);
-        if (hourIndex === -1) return { precipitation: 0, snowfall: 0, feelsLike: null, condition: 'Unknown' };
+        const indices = getMorningHourIndices(weather.hourly.time, tomorrow);
+        if (indices.length === 0) return { precipitation: 0, snowfall: 0, feelsLike: null, condition: 'Unknown' };
 
-        const precip = weather.hourly.precipitation?.[hourIndex] || 0;
-        const snow = weather.hourly.snowfall?.[hourIndex] || 0;
-        const feelsLike = weather.hourly.apparent_temperature?.[hourIndex] || null;
-        const cloudCover = weather.hourly.cloud_cover?.[hourIndex] || 0;
-        const windSpeed = weather.hourly.wind_speed_10m?.[hourIndex] || 0;
+        const h = weather.hourly;
+        const firstIndex = indices[0];
+        const feelsLike = h.apparent_temperature?.[firstIndex] ?? null;
+        const cloudCover = h.cloud_cover?.[firstIndex] || 0;
 
-        // Check multiple morning hours for precip (6-9 AM)
         let totalPrecip = 0;
         let totalSnow = 0;
-        for (let i = hourIndex; i < Math.min(hourIndex + 4, weather.hourly.time.length); i++) {
-            totalPrecip += weather.hourly.precipitation?.[i] || 0;
-            totalSnow += weather.hourly.snowfall?.[i] || 0;
+        let windSpeed = 0;
+        let windGusts = 0;
+        let feelsLikeMax = null;
+        let feelsLikeMin = null;
+        for (const i of indices) {
+            totalPrecip += h.precipitation?.[i] || 0;
+            totalSnow += h.snowfall?.[i] || 0;
+            windSpeed = Math.max(windSpeed, h.wind_speed_10m?.[i] || 0);
+            windGusts = Math.max(windGusts, h.wind_gusts_10m?.[i] || 0);
+            const fl = h.apparent_temperature?.[i];
+            if (fl !== undefined && fl !== null) {
+                feelsLikeMax = feelsLikeMax === null ? fl : Math.max(feelsLikeMax, fl);
+                feelsLikeMin = feelsLikeMin === null ? fl : Math.min(feelsLikeMin, fl);
+            }
         }
 
         let condition;
@@ -182,12 +207,12 @@
         else if (cloudCover > 50) condition = 'Partly Cloudy';
         else condition = 'Clear';
 
-        const windGusts = weather.hourly.wind_gusts_10m?.[hourIndex] || 0;
-
         return {
             precipitation: totalPrecip,
             snowfall: totalSnow,
             feelsLike: feelsLike !== null ? Math.round(feelsLike) : null,
+            feelsLikeMax: feelsLikeMax !== null ? Math.round(feelsLikeMax) : null,
+            feelsLikeMin: feelsLikeMin !== null ? Math.round(feelsLikeMin) : null,
             condition,
             windSpeed,
             windGusts,
@@ -195,8 +220,8 @@
             isRain: totalPrecip > 0.2,
             isPouring: totalPrecip > 0.5,
             isSuperWindy: windSpeed > 25 || windGusts > 35,
-            isExtremeHeat: feelsLike !== null && feelsLike >= 100,
-            isExtremeCold: feelsLike !== null && feelsLike <= 15
+            isExtremeHeat: feelsLikeMax !== null && feelsLikeMax >= 90,
+            isExtremeCold: feelsLikeMin !== null && feelsLikeMin <= 15
         };
     }
 
@@ -281,6 +306,8 @@
                 severity: f.properties.severity,
                 headline: f.properties.headline,
                 description: f.properties.description,
+                onset: f.properties.onset || f.properties.effective || null,
+                ends: f.properties.ends || f.properties.expires || null,
                 expires: f.properties.expires
             }));
         } catch (error) {
@@ -1282,7 +1309,45 @@
         return outlook;
     }
 
-    function getRecommendation(scores, surfScoreData, fishData, cycleData, weatherCondition) {
+    // NWS alerts that force a gym morning when they cover the morning window.
+    // Watches are deliberately excluded; only warnings and advisories count.
+    const GYM_ALERTS = [
+        { kind: 'heat', events: ['heat advisory', 'excessive heat warning', 'extreme heat warning'] },
+        { kind: 'wind', events: ['wind advisory', 'high wind warning', 'gale warning', 'storm warning'] },
+        { kind: 'winter', events: ['winter storm warning', 'blizzard warning', 'ice storm warning'] }
+    ];
+
+    function getMorningAlert(alerts) {
+        if (!alerts || alerts.length === 0) return null;
+        const tomorrow = getTomorrowDate();
+        const pad = n => String(n).padStart(2, '0');
+        const windowStart = new Date(`${tomorrow}T${pad(CONFIG.morningStartHour)}:00:00`);
+        const windowEnd = new Date(`${tomorrow}T${pad(CONFIG.morningEndHour)}:59:59`);
+        for (const alert of alerts) {
+            const name = (alert.event || '').toLowerCase();
+            const rule = GYM_ALERTS.find(r => r.events.includes(name));
+            if (!rule) continue;
+            const start = alert.onset ? new Date(alert.onset) : null;
+            const end = alert.ends ? new Date(alert.ends) : null;
+            if (start && !isNaN(start) && start > windowEnd) continue;
+            if (end && !isNaN(end) && end < windowStart) continue;
+            return { event: alert.event, kind: rule.kind };
+        }
+        return null;
+    }
+
+    function setMorningWindowFromSunrise(sunriseData) {
+        if (!sunriseData || !sunriseData.results || !sunriseData.results.sunrise) return;
+        const sunrise = new Date(sunriseData.results.sunrise);
+        if (isNaN(sunrise)) return;
+        // Dawn patrol starts about 30 min before sunrise (civil twilight).
+        // Summer sunrise 5:35 -> 5-9. Sept 6:30 -> 5-9. Nov 6:45 -> 6-9. Dec 7:15 -> 6-9.
+        const dawn = new Date(sunrise.getTime() - 30 * 60 * 1000);
+        CONFIG.morningStartHour = Math.max(5, Math.min(7, dawn.getHours()));
+        CONFIG.morningEndHour = Math.max(9, CONFIG.morningStartHour + 3);
+    }
+
+    function getRecommendation(scores, surfScoreData, fishData, cycleData, weatherCondition, alerts) {
         const { surf, fish, photo, cycle } = scores;
 
         const icons = {
@@ -1303,37 +1368,40 @@
             return '';
         }
 
-        // Super windy = gym day, no question
-        if (weatherCondition && weatherCondition.isSuperWindy) {
-            let gymDetail = `Wind ${Math.round(weatherCondition.windSpeed)} mph`;
-            if (weatherCondition.windGusts > 35) gymDetail += `, gusts ${Math.round(weatherCondition.windGusts)} mph`;
-            if (weatherCondition.feelsLike !== null) gymDetail += ` - Feels like ${weatherCondition.feelsLike}°F`;
-            return {
-                activity: 'HIT THE GYM',
-                detail: gymDetail,
-                icon: '&#127947;',
-                runnerUp: surf >= 5 ? `Or: GO SURF (${surf}/10) — you're already wet` : null
-            };
+        const gym = (detail, runnerUp) => ({
+            activity: 'HIT THE GYM',
+            detail,
+            icon: '&#127947;',
+            runnerUp: runnerUp || null
+        });
+        const surfRunnerUp = (minScore, why) =>
+            surf >= minScore ? `Or: GO SURF (${surf}/10) — ${why}` : null;
+        const wc = weatherCondition || {};
+        const hot = wc.feelsLikeMax !== null && wc.feelsLikeMax !== undefined ? ` — Feels like ${wc.feelsLikeMax}°F` : '';
+        const cold = wc.feelsLikeMin !== null && wc.feelsLikeMin !== undefined ? ` — Feels like ${wc.feelsLikeMin}°F` : '';
+        const gusty = wc.windGusts ? `, gusts ${Math.round(wc.windGusts)} mph` : '';
+
+        // An NWS warning or advisory covering the morning window = gym, no debate
+        const alert = getMorningAlert(alerts);
+        if (alert) {
+            if (alert.kind === 'heat') return gym(alert.event + hot, surfRunnerUp(4, 'cool off in the water'));
+            if (alert.kind === 'wind') return gym(alert.event + gusty, surfRunnerUp(5, "you're already wet"));
+            return gym(alert.event + cold, null);
+        }
+
+        // Super windy at any point in the window = gym
+        if (wc.isSuperWindy) {
+            return gym(`Wind ${Math.round(wc.windSpeed)} mph${gusty}`, surfRunnerUp(5, "you're already wet"));
         }
 
         // Extreme heat = gym, but surfing is still an option
-        if (weatherCondition && weatherCondition.isExtremeHeat) {
-            return {
-                activity: 'HIT THE GYM',
-                detail: `Extreme heat — Feels like ${weatherCondition.feelsLike}°F`,
-                icon: '&#127947;',
-                runnerUp: surf >= 4 ? `Or: GO SURF (${surf}/10) — cool off in the water` : null
-            };
+        if (wc.isExtremeHeat) {
+            return gym('Extreme heat' + hot, surfRunnerUp(4, 'cool off in the water'));
         }
 
         // Extreme cold = gym
-        if (weatherCondition && weatherCondition.isExtremeCold) {
-            return {
-                activity: 'HIT THE GYM',
-                detail: `Dangerously cold — Feels like ${weatherCondition.feelsLike}°F`,
-                icon: '&#127947;',
-                runnerUp: null
-            };
+        if (wc.isExtremeCold) {
+            return gym('Dangerously cold' + cold, null);
         }
 
         // Sort activities - surf wins ties (stable sort with surf priority)
@@ -1347,8 +1415,8 @@
         const best = activities[0];
         const runnerUp = activities[1];
 
-        // All scores low = gym day
-        if (best.score < 4) {
+        // Nothing scores better than a 4 = gym day
+        if (best.score <= 4) {
             let gymDetail = weatherCondition ? weatherCondition.condition : 'Poor conditions';
             if (weatherCondition && weatherCondition.feelsLike !== null) {
                 gymDetail += ` - Feels like ${weatherCondition.feelsLike}°F`;
@@ -1385,9 +1453,13 @@
 
         try {
             // Fetch all data in parallel
-            const [weather, sunriseData, noaaTides, waterTempData, marineData, buoyData, surflineData, nwsAlerts] = await Promise.all([
+            // Sunrise first: it sizes the morning window that the Surfline
+            // parser and every scorer read from CONFIG.
+            const sunriseData = await fetchSunrise();
+            setMorningWindowFromSunrise(sunriseData);
+
+            const [weather, noaaTides, waterTempData, marineData, buoyData, surflineData, nwsAlerts] = await Promise.all([
                 fetchWeather(),
-                fetchSunrise(),
                 fetchNoaaTides(),
                 fetchWaterTemp(),
                 fetchMarineData(),
@@ -1528,7 +1600,7 @@
         state.outlook = calculateOutlook(state.weather, state.marineData, state.noaaTides, state.waterTempData, state.sunrise);
 
         // Get recommendation
-        state.recommendation = getRecommendation(state.scores, surfScoreData, fishData, cycleData, weatherCondition);
+        state.recommendation = getRecommendation(state.scores, surfScoreData, fishData, cycleData, weatherCondition, state.nwsAlerts);
 
         // Store prediction keyed by the date it's FOR (tomorrow)
         // so the journal can look it up when logging that morning

@@ -1,5 +1,5 @@
 // Dawn Patrol Service Worker
-const CACHE_NAME = 'dawn-patrol-v15';
+const CACHE_NAME = 'dawn-patrol-v16';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
