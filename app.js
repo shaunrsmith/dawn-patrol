@@ -2074,9 +2074,10 @@
         const startHour = 4;
         const endHour = 11;
         const chartW = 320;
-        const chartH = 80;
-        const padTop = 8;
-        const padBot = 20;
+        const chartH = 100;
+        const padX = 22;     // room for edge hour labels and point labels
+        const padTop = 18;   // room for the high-tide label above the peak
+        const padBot = 22;
 
         // Interpolate tide heights using cosine between hi/lo points
         function getHeightAt(hour) {
@@ -2105,7 +2106,7 @@
         const maxH = Math.max(...samples.map(s => s.height));
         const range = maxH - minH || 1;
 
-        function toX(hour) { return ((hour - startHour) / (endHour - startHour)) * chartW; }
+        function toX(hour) { return padX + ((hour - startHour) / (endHour - startHour)) * (chartW - padX * 2); }
         function toY(height) { return padTop + (chartH - padTop - padBot) * (1 - (height - minH) / range); }
 
         // Build the SVG
@@ -2116,7 +2117,7 @@
             const x = toX(h);
             svgContent += `<line x1="${x}" y1="${padTop}" x2="${x}" y2="${chartH - padBot}" class="tide-grid"/>`;
             const label = h > 12 ? (h - 12) : h;
-            svgContent += `<text x="${x}" y="${chartH - 4}" class="tide-hour-label">${label}${h < 12 ? 'a' : 'p'}</text>`;
+            svgContent += `<text x="${x}" y="${chartH - 6}" class="tide-hour-label">${label}${h < 12 ? 'a' : 'p'}</text>`;
         }
 
         // Tide curve (filled area)
@@ -2138,8 +2139,12 @@
                 const hourNum = parseInt(h, 10);
                 const ampm = hourNum >= 12 ? 'p' : 'a';
                 const hour12 = hourNum > 12 ? hourNum - 12 : hourNum;
-                const labelY = pt.type === 'H' ? y - 7 : y + 13;
-                svgContent += `<text x="${x}" y="${labelY}" class="tide-point-label">${pt.type === 'H' ? 'H' : 'L'} ${hour12}:${m}${ampm}</text>`;
+                // Label sits above the point for both H and L: above the curve is
+                // always empty, and below the L point collides with the hour row.
+                const labelY = y - 8;
+                // Keep the label inside the viewBox at either edge (~40px wide at 9px font)
+                const labelX = Math.max(padX + 2, Math.min(chartW - padX - 2, x));
+                svgContent += `<text x="${labelX}" y="${labelY}" class="tide-point-label">${pt.type === 'H' ? 'H' : 'L'} ${hour12}:${m}${ampm}</text>`;
             }
         }
 
