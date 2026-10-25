@@ -1,11 +1,14 @@
 // Dawn Patrol Service Worker
 const CACHE_NAME = 'dawn-patrol-v17';
+// Relative to the worker's own URL so the app works when hosted under a
+// subpath (GitHub Pages serves it at /dawn-patrol/, not at the site root).
 const STATIC_ASSETS = [
-    '/',
-    '/index.html',
-    '/app.js',
-    '/style.css',
-    '/manifest.json'
+    './',
+    './index.html',
+    './app.js',
+    './style.css',
+    './manifest.json',
+    './icons/icon.svg'
 ];
 
 // Install - cache static assets
