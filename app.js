@@ -1358,10 +1358,162 @@
         }
     ];
 
-    function pickCoach(date = new Date()) {
+    // Day number of the morning being planned (tomorrow), used to rotate
+    // the coach and the workout so each day gets a different session.
+    function getMorningDayIndex() {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        d.setHours(0, 0, 0, 0);
+        return Math.floor(d.getTime() / 86400000);
+    }
+
+    function pickCoach() {
         if (COACHES.length === 0) return null;
-        const dayIndex = Math.floor(date.getTime() / 86400000);
-        return COACHES[dayIndex % COACHES.length];
+        return COACHES[getMorningDayIndex() % COACHES.length];
+    }
+
+    // Home gym inventory. Keys are referenced by the workouts below.
+    const EQUIPMENT = {
+        kettlebell: 'Kettlebells (to 25 lb)',
+        mace: 'Steel mace',
+        bands: 'Resistance bands',
+        ball: 'Yoga ball',
+        mat: 'Yoga mat',
+        light: '2 lb weights'
+    };
+
+    // Rotating home sessions, each about 30 minutes. `gear` says what to grab
+    // for that movement; `sets` is the prescription.
+    const WORKOUTS = [
+        {
+            name: 'Kettlebell Power',
+            focus: 'Hips, legs and the pull you paddle with',
+            equipment: ['kettlebell', 'mat'],
+            exercises: [
+                { name: 'Halos (warm-up)', sets: '2 x 8 each way', gear: '10-15 lb bell' },
+                { name: 'Kettlebell swings', sets: '4 x 15', gear: '25 lb bell' },
+                { name: 'Goblet squat', sets: '3 x 10', gear: '25 lb bell' },
+                { name: 'Single-arm row', sets: '3 x 10 / side', gear: '25 lb bell' },
+                { name: 'Half-kneeling press', sets: '3 x 8 / side', gear: '15-20 lb bell' },
+                { name: 'Turkish get-up', sets: '2 x 3 / side', gear: '10-15 lb bell, mat' },
+                { name: 'Suitcase carry', sets: '3 x 40 steps / side', gear: '25 lb bell' }
+            ]
+        },
+        {
+            name: 'Steel Mace Flow',
+            focus: 'Shoulders, grip and rotation for duck dives and turns',
+            equipment: ['mace', 'mat'],
+            exercises: [
+                { name: 'Front pendulum (warm-up)', sets: '2 x 10', gear: 'Mace' },
+                { name: 'Mace 360s', sets: '3 x 8 / side', gear: 'Mace' },
+                { name: '10-to-2s', sets: '3 x 8 / side', gear: 'Mace' },
+                { name: 'Mace front squat', sets: '3 x 10', gear: 'Mace' },
+                { name: 'Offset reverse lunge', sets: '3 x 8 / side', gear: 'Mace' },
+                { name: 'Grave diggers', sets: '3 x 8 / side', gear: 'Mace' },
+                { name: 'Mace uppercuts', sets: '3 x 10 / side', gear: 'Mace' },
+                { name: 'Shoulder stretch cool-down', sets: '2 min', gear: 'Mat' }
+            ]
+        },
+        {
+            name: 'Paddle & Core',
+            focus: 'Back, rear shoulders and a trunk that stays stable on the board',
+            equipment: ['bands', 'ball', 'mat'],
+            exercises: [
+                { name: 'Band pull-aparts (warm-up)', sets: '2 x 15', gear: 'Light band' },
+                { name: 'Anchored band row', sets: '3 x 12', gear: 'Medium band' },
+                { name: 'Band face pulls', sets: '3 x 15', gear: 'Light band' },
+                { name: 'Straight-arm pulldown (paddle stroke)', sets: '3 x 12', gear: 'Medium band' },
+                { name: 'Ball hamstring curl', sets: '3 x 12', gear: 'Yoga ball, mat' },
+                { name: 'Stir-the-pot plank', sets: '3 x 30 sec', gear: 'Yoga ball' },
+                { name: 'Ball knee tucks', sets: '3 x 10', gear: 'Yoga ball' },
+                { name: 'Band lateral walks', sets: '3 x 12 / side', gear: 'Heavy band' }
+            ]
+        },
+        {
+            name: 'Mobility & Pop-ups',
+            focus: 'Loose hips and shoulders, quick to your feet',
+            equipment: ['mat', 'light', 'ball'],
+            exercises: [
+                { name: 'Sun salutations (warm-up)', sets: '5 rounds', gear: 'Mat' },
+                { name: 'Y-T-W raises', sets: '3 x 12', gear: '2 lb each hand, on ball' },
+                { name: 'External rotations', sets: '3 x 15 / side', gear: '2 lb weight' },
+                { name: 'Pop-up drill', sets: '3 x 8', gear: 'Mat' },
+                { name: '90/90 hip switches', sets: '2 x 10', gear: 'Mat' },
+                { name: 'Open books', sets: '2 x 10 / side', gear: 'Mat' },
+                { name: 'Ball back extension', sets: '2 x 60 sec', gear: 'Yoga ball' },
+                { name: 'Pigeon pose', sets: '60 sec / side', gear: 'Mat' }
+            ]
+        }
+    ];
+
+    // Taps on "Next workout" step forward from the day's default session.
+    let workoutOffset = 0;
+
+    function pickWorkout() {
+        return WORKOUTS[(getMorningDayIndex() + workoutOffset) % WORKOUTS.length];
+    }
+
+    function renderWorkout() {
+        const card = document.getElementById('gym-card');
+        if (!card) return;
+        const workout = pickWorkout();
+        const isGymDay = state.recommendation && state.recommendation.activity === 'HIT THE GYM';
+
+        card.classList.toggle('gym-day', !!isGymDay);
+        document.getElementById('gym-call').textContent = isGymDay ? "TODAY'S CALL" : 'ANY DAY';
+        document.getElementById('gym-workout-name').textContent = workout.name;
+        document.getElementById('gym-workout-focus').textContent = workout.focus;
+
+        const gearEl = document.getElementById('gym-equipment');
+        gearEl.innerHTML = '';
+        for (const key of workout.equipment) {
+            const chip = document.createElement('span');
+            chip.className = 'gear-chip';
+            chip.textContent = EQUIPMENT[key] || key;
+            gearEl.appendChild(chip);
+        }
+
+        const listEl = document.getElementById('gym-exercises');
+        listEl.innerHTML = '';
+        for (const ex of workout.exercises) {
+            const row = document.createElement('div');
+            row.className = 'exercise-row';
+            const main = document.createElement('div');
+            main.className = 'exercise-main';
+            const name = document.createElement('div');
+            name.className = 'exercise-name';
+            name.textContent = ex.name;
+            const sets = document.createElement('div');
+            sets.className = 'exercise-sets';
+            sets.textContent = ex.sets;
+            main.append(name, sets);
+            const gear = document.createElement('div');
+            gear.className = 'exercise-gear';
+            gear.textContent = ex.gear;
+            row.append(main, gear);
+            listEl.appendChild(row);
+        }
+
+        const coach = pickCoach();
+        const coachEl = document.getElementById('gym-coach');
+        if (coach) {
+            coachEl.innerHTML = '';
+            coachEl.append('Or follow along with ');
+            const link = document.createElement('a');
+            link.href = coach.url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = coach.name;
+            coachEl.append(link, ` (${coach.focus.toLowerCase()})`);
+            coachEl.style.display = 'block';
+        } else {
+            coachEl.style.display = 'none';
+        }
+    }
+
+    function nextWorkout() {
+        workoutOffset = (workoutOffset + 1) % WORKOUTS.length;
+        renderWorkout();
     }
 
     function getRecommendation(scores, surfScoreData, fishData, cycleData, weatherCondition, alerts) {
@@ -1689,6 +1841,7 @@
         } else {
             coachEl.style.display = 'none';
         }
+        renderWorkout();
 
         // NWS Weather Alerts
         const alertContainer = document.getElementById('nws-alerts');
@@ -2444,6 +2597,8 @@
     // ============================================
     // Event Handlers
     // ============================================
+    window.nextWorkout = nextWorkout;
+
     window.refreshData = function() {
         loadAllData();
     };
@@ -2463,6 +2618,7 @@
     // Initialize
     // ============================================
     document.addEventListener('DOMContentLoaded', () => {
+        renderWorkout();
         loadAllData();
     });
 
