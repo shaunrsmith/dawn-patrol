@@ -1347,6 +1347,23 @@
         CONFIG.morningEndHour = Math.max(9, CONFIG.morningStartHour + 3);
     }
 
+    // Online coaches to follow along with on a gym morning. One is picked per
+    // day so the suggestion rotates instead of always showing the first entry.
+    const COACHES = [
+        {
+            name: 'Maria Vida',
+            focus: 'Surf strength & mobility',
+            url: 'https://www.youtube.com/@mariavidafit',
+            site: 'https://mariavida.fit/'
+        }
+    ];
+
+    function pickCoach(date = new Date()) {
+        if (COACHES.length === 0) return null;
+        const dayIndex = Math.floor(date.getTime() / 86400000);
+        return COACHES[dayIndex % COACHES.length];
+    }
+
     function getRecommendation(scores, surfScoreData, fishData, cycleData, weatherCondition, alerts) {
         const { surf, fish, photo, cycle } = scores;
 
@@ -1372,7 +1389,8 @@
             activity: 'HIT THE GYM',
             detail,
             icon: '&#127947;',
-            runnerUp: runnerUp || null
+            runnerUp: runnerUp || null,
+            coach: pickCoach()
         });
         const surfRunnerUp = (minScore, why) =>
             surf >= minScore ? `Or: GO SURF (${surf}/10) — ${why}` : null;
@@ -1425,7 +1443,8 @@
                 activity: 'HIT THE GYM',
                 detail: gymDetail,
                 icon: '&#127947;',
-                runnerUp: best.score >= 3 ? `Or: ${best.label} (${best.score}/10)` : null
+                runnerUp: best.score >= 3 ? `Or: ${best.label} (${best.score}/10)` : null,
+                coach: pickCoach()
             };
         }
 
@@ -1655,6 +1674,20 @@
             runnerUpEl.style.display = 'block';
         } else {
             runnerUpEl.style.display = 'none';
+        }
+        const coachEl = document.getElementById('rec-coach');
+        if (rec.coach) {
+            coachEl.innerHTML = '';
+            coachEl.append('Train with ');
+            const link = document.createElement('a');
+            link.href = rec.coach.url;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = rec.coach.name;
+            coachEl.append(link, ` — ${rec.coach.focus}`);
+            coachEl.style.display = 'block';
+        } else {
+            coachEl.style.display = 'none';
         }
 
         // NWS Weather Alerts
