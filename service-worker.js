@@ -1,5 +1,5 @@
 // Dawn Patrol Service Worker
-const CACHE_NAME = 'dawn-patrol-v19';
+const CACHE_NAME = 'dawn-patrol-v20';
 // Relative to the worker's own URL so the app works when hosted under a
 // subpath (GitHub Pages serves it at /dawn-patrol/, not at the site root).
 const STATIC_ASSETS = [

@@ -1347,29 +1347,13 @@
         CONFIG.morningEndHour = Math.max(9, CONFIG.morningStartHour + 3);
     }
 
-    // Online coaches to follow along with on a gym morning. One is picked per
-    // day so the suggestion rotates instead of always showing the first entry.
-    const COACHES = [
-        {
-            name: 'Maria Vida',
-            focus: 'Surf strength & mobility',
-            url: 'https://www.youtube.com/@mariavidafit',
-            site: 'https://mariavida.fit/'
-        }
-    ];
-
     // Day number of the morning being planned (tomorrow), used to rotate
-    // the coach and the workout so each day gets a different session.
+    // the workout so each day gets a different session.
     function getMorningDayIndex() {
         const d = new Date();
         d.setDate(d.getDate() + 1);
         d.setHours(0, 0, 0, 0);
         return Math.floor(d.getTime() / 86400000);
-    }
-
-    function pickCoach() {
-        if (COACHES.length === 0) return null;
-        return COACHES[getMorningDayIndex() % COACHES.length];
     }
 
     // Home gym inventory. Keys are referenced by the workouts below.
@@ -1539,22 +1523,6 @@
             row.append(main, gear);
             listEl.appendChild(row);
         }
-
-        const coach = pickCoach();
-        const coachEl = document.getElementById('gym-coach');
-        if (coach) {
-            coachEl.innerHTML = '';
-            coachEl.append('Or follow along with ');
-            const link = document.createElement('a');
-            link.href = coach.url;
-            link.target = '_blank';
-            link.rel = 'noopener';
-            link.textContent = coach.name;
-            coachEl.append(link, ` (${coach.focus.toLowerCase()})`);
-            coachEl.style.display = 'block';
-        } else {
-            coachEl.style.display = 'none';
-        }
     }
 
     function selectWorkout(index) {
@@ -1587,8 +1555,7 @@
             activity: 'HIT THE GYM',
             detail,
             icon: '&#127947;',
-            runnerUp: runnerUp || null,
-            coach: pickCoach()
+            runnerUp: runnerUp || null
         });
         const surfRunnerUp = (minScore, why) =>
             surf >= minScore ? `Or: GO SURF (${surf}/10) — ${why}` : null;
@@ -1641,8 +1608,7 @@
                 activity: 'HIT THE GYM',
                 detail: gymDetail,
                 icon: '&#127947;',
-                runnerUp: best.score >= 3 ? `Or: ${best.label} (${best.score}/10)` : null,
-                coach: pickCoach()
+                runnerUp: best.score >= 3 ? `Or: ${best.label} (${best.score}/10)` : null
             };
         }
 
@@ -1872,20 +1838,6 @@
             runnerUpEl.style.display = 'block';
         } else {
             runnerUpEl.style.display = 'none';
-        }
-        const coachEl = document.getElementById('rec-coach');
-        if (rec.coach) {
-            coachEl.innerHTML = '';
-            coachEl.append('Train with ');
-            const link = document.createElement('a');
-            link.href = rec.coach.url;
-            link.target = '_blank';
-            link.rel = 'noopener';
-            link.textContent = rec.coach.name;
-            coachEl.append(link, ` — ${rec.coach.focus}`);
-            coachEl.style.display = 'block';
-        } else {
-            coachEl.style.display = 'none';
         }
         renderWorkout();
 

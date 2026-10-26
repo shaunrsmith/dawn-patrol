@@ -157,18 +157,6 @@ body {
     border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-.rec-coach {
-    font-size: 12px;
-    opacity: 0.8;
-    margin-top: 8px;
-}
-
-.rec-coach a {
-    color: inherit;
-    font-weight: 600;
-    text-decoration: underline;
-}
-
 /* Conditions Summary */
 .conditions-summary {
     display: flex;
@@ -679,17 +667,6 @@ body {
     text-align: right;
     flex-shrink: 0;
     max-width: 45%;
-}
-
-.gym-coach {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-top: 10px;
-}
-
-.gym-coach a {
-    color: var(--accent-blue);
-    font-weight: 600;
 }
 
 .workout-tabs {
