@@ -693,14 +693,15 @@ body {
 }
 
 .workout-tabs {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
+    display: flex;
+    gap: 5px;
     margin-bottom: 12px;
 }
 
 .workout-tab {
-    padding: 7px 4px;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 7px 2px;
     font-size: 11px;
     font-weight: 600;
     line-height: 1.2;

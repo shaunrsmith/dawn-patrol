@@ -1383,74 +1383,88 @@
         medball: '10 lb medicine ball'
     };
 
-    // Rotating home sessions, each about 30 minutes. `gear` says what to grab
-    // for that movement; `sets` is the prescription.
+    // Rotating surf-specific home sessions, each about 30 minutes and built
+    // around one part of surfing. `gear` says what to grab for that movement;
+    // `sets` is the prescription.
     const WORKOUTS = [
         {
-            name: 'Kettlebell Power',
-            short: 'Kettlebell',
-            focus: 'Hips, legs and the pull you paddle with',
-            equipment: ['kettlebell', 'medball', 'mat'],
-            exercises: [
-                { name: 'Halos (warm-up)', sets: '2 x 8 each way', gear: '10-15 lb bell' },
-                { name: 'Kettlebell swings', sets: '4 x 15', gear: '25 lb bell' },
-                { name: 'Goblet squat', sets: '3 x 10', gear: '25 lb bell' },
-                { name: 'Single-arm row', sets: '3 x 10 / side', gear: '25 lb bell' },
-                { name: 'Half-kneeling press', sets: '3 x 8 / side', gear: '15-20 lb bell' },
-                { name: 'Turkish get-up', sets: '2 x 3 / side', gear: '10-15 lb bell, mat' },
-                { name: 'Suitcase carry', sets: '3 x 40 steps / side', gear: '25 lb bell' },
-                { name: 'Med ball slams (finisher)', sets: '3 x 10', gear: '10 lb med ball' }
-            ]
-        },
-        {
-            name: 'Steel Mace Flow',
-            short: 'Steel Mace',
-            focus: 'Shoulders, grip and rotation for duck dives and turns',
-            equipment: ['mace', 'mat'],
-            exercises: [
-                { name: 'Front pendulum (warm-up)', sets: '2 x 10', gear: 'Mace' },
-                { name: 'Mace 360s', sets: '3 x 8 / side', gear: 'Mace' },
-                { name: '10-to-2s', sets: '3 x 8 / side', gear: 'Mace' },
-                { name: 'Mace front squat', sets: '3 x 10', gear: 'Mace' },
-                { name: 'Offset reverse lunge', sets: '3 x 8 / side', gear: 'Mace' },
-                { name: 'Grave diggers', sets: '3 x 8 / side', gear: 'Mace' },
-                { name: 'Mace uppercuts', sets: '3 x 10 / side', gear: 'Mace' },
-                { name: 'Shoulder stretch cool-down', sets: '2 min', gear: 'Mat' }
-            ]
-        },
-        {
-            name: 'Paddle & Core',
-            short: 'Bands & Core',
-            focus: 'Back, rear shoulders and a trunk that stays stable on the board',
-            equipment: ['bands', 'medball', 'ball', 'mat'],
+            name: 'Paddle Power',
+            short: 'Paddle',
+            focus: 'Lats, rear shoulders and the endurance to make it out back',
+            equipment: ['bands', 'kettlebell', 'medball', 'ball', 'light', 'mat'],
             exercises: [
                 { name: 'Band pull-aparts (warm-up)', sets: '2 x 15', gear: 'Light band' },
-                { name: 'Anchored band row', sets: '3 x 12', gear: 'Medium band' },
+                { name: 'Single-arm row', sets: '3 x 12 / side', gear: '25 lb bell' },
+                { name: 'Straight-arm pulldown (paddle stroke)', sets: '3 x 15', gear: 'Medium band, anchored high' },
+                { name: 'Prone Y-T-W raises', sets: '3 x 10 each', gear: '2 lb weights, chest on yoga ball' },
                 { name: 'Band face pulls', sets: '3 x 15', gear: 'Light band' },
-                { name: 'Straight-arm pulldown (paddle stroke)', sets: '3 x 12', gear: 'Medium band' },
-                { name: 'Ball hamstring curl', sets: '3 x 12', gear: 'Yoga ball, mat' },
-                { name: 'Stir-the-pot plank', sets: '3 x 30 sec', gear: 'Yoga ball' },
-                { name: 'Ball knee tucks', sets: '3 x 10', gear: 'Yoga ball' },
-                { name: 'Med ball Russian twists', sets: '3 x 20', gear: '10 lb med ball' },
-                { name: 'Rotational throws (wall or partner)', sets: '3 x 8 / side', gear: '10 lb med ball' },
-                { name: 'Band lateral walks', sets: '3 x 12 / side', gear: 'Heavy band' }
+                { name: 'Prone swimmers (dry-land paddling)', sets: '3 x 30 sec', gear: 'Mat' },
+                { name: 'Med ball overhead slams', sets: '3 x 10', gear: '10 lb med ball' },
+                { name: 'Halos (cool-down)', sets: '2 x 10 each way', gear: '10-15 lb bell' }
             ]
         },
         {
-            name: 'Mobility & Pop-ups',
-            short: 'Mobility',
-            focus: 'Loose hips and shoulders, quick to your feet',
-            equipment: ['mat', 'light', 'medball', 'ball'],
+            name: 'Pop-up & Drive',
+            short: 'Pop-up',
+            focus: 'Explosive hips and a fast, clean pop-up',
+            equipment: ['kettlebell', 'medball', 'mat'],
             exercises: [
-                { name: 'Sun salutations (warm-up)', sets: '5 rounds', gear: 'Mat' },
-                { name: 'Y-T-W raises', sets: '3 x 12', gear: '2 lb each hand, on ball' },
-                { name: 'External rotations', sets: '3 x 15 / side', gear: '2 lb weight' },
-                { name: 'Pop-up drill', sets: '3 x 8', gear: 'Mat' },
-                { name: 'Med ball overhead squat', sets: '2 x 12', gear: '10 lb med ball' },
+                { name: 'Bodyweight squats (warm-up)', sets: '2 x 12', gear: 'Mat' },
+                { name: 'Kettlebell swings', sets: '4 x 15', gear: '25 lb bell' },
+                { name: 'Burpee pop-ups (land in surf stance)', sets: '4 x 8', gear: 'Mat' },
+                { name: 'Goblet squat', sets: '3 x 10', gear: '25 lb bell' },
+                { name: 'Explosive push-up (hands leave the mat)', sets: '3 x 8', gear: 'Mat' },
+                { name: 'Reverse lunge to knee drive', sets: '3 x 8 / side', gear: '10 lb med ball at chest' },
+                { name: 'Med ball chest pass (wall)', sets: '3 x 10', gear: '10 lb med ball' },
+                { name: 'Suitcase carry', sets: '3 x 40 steps / side', gear: '25 lb bell' }
+            ]
+        },
+        {
+            name: 'Turns & Rotation',
+            short: 'Turns',
+            focus: 'Trunk rotation for bottom turns, cutbacks and duck dives',
+            equipment: ['mace', 'medball', 'bands', 'mat'],
+            exercises: [
+                { name: 'Mace front pendulum (warm-up)', sets: '2 x 10', gear: 'Mace' },
+                { name: 'Mace 360s', sets: '3 x 8 / side', gear: 'Mace' },
+                { name: '10-to-2s', sets: '3 x 8 / side', gear: 'Mace' },
+                { name: 'Rotational throws (wall)', sets: '3 x 8 / side', gear: '10 lb med ball' },
+                { name: 'Band wood chops, high to low', sets: '3 x 12 / side', gear: 'Medium band, anchored high' },
+                { name: 'Mace offset squat', sets: '3 x 10', gear: 'Mace' },
+                { name: 'Med ball Russian twists', sets: '3 x 20', gear: '10 lb med ball' },
+                { name: 'Grave diggers', sets: '3 x 8 / side', gear: 'Mace' }
+            ]
+        },
+        {
+            name: 'Balance & Board Feel',
+            short: 'Balance',
+            focus: 'Single-leg strength and a stable base over the board',
+            equipment: ['ball', 'kettlebell', 'bands', 'light', 'mat'],
+            exercises: [
+                { name: 'Surf-stance squat holds (warm-up)', sets: '2 x 30 sec', gear: 'Mat' },
+                { name: 'Single-leg deadlift', sets: '3 x 8 / side', gear: '10-15 lb bell' },
+                { name: 'Kneeling balance on the ball', sets: '3 x 30 sec', gear: 'Yoga ball' },
+                { name: 'Ball hamstring curl', sets: '3 x 12', gear: 'Yoga ball, mat' },
+                { name: 'Stir-the-pot plank', sets: '3 x 30 sec', gear: 'Yoga ball' },
+                { name: 'Band lateral walks', sets: '3 x 12 / side', gear: 'Heavy band' },
+                { name: 'Surf stance, arm swings for balance', sets: '3 x 45 sec', gear: '2 lb weight each hand' },
+                { name: 'Ball pike', sets: '3 x 10', gear: 'Yoga ball' }
+            ]
+        },
+        {
+            name: 'Mobility & Recovery',
+            short: 'Mobility',
+            focus: 'Loose shoulders, hips and spine after a session or before a dawn patrol',
+            equipment: ['mat', 'bands', 'mace', 'ball'],
+            exercises: [
+                { name: 'Sun salutations', sets: '5 rounds', gear: 'Mat' },
+                { name: 'Band shoulder pass-throughs', sets: '2 x 10', gear: 'Light band, wide grip' },
+                { name: 'Mace front-hold deep squat', sets: '2 x 45 sec', gear: 'Mace' },
                 { name: '90/90 hip switches', sets: '2 x 10', gear: 'Mat' },
                 { name: 'Open books', sets: '2 x 10 / side', gear: 'Mat' },
                 { name: 'Ball back extension', sets: '2 x 60 sec', gear: 'Yoga ball' },
-                { name: 'Pigeon pose', sets: '60 sec / side', gear: 'Mat' }
+                { name: 'Pigeon pose', sets: '60 sec / side', gear: 'Mat' },
+                { name: 'Box breathing 4-4-4-4', sets: '3 min', gear: 'Mat' }
             ]
         }
     ];
