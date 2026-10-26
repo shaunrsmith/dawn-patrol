@@ -1379,7 +1379,8 @@
         bands: 'Resistance bands',
         ball: 'Yoga ball',
         mat: 'Yoga mat',
-        light: '2 lb weights'
+        light: '2 lb weights',
+        medball: '10 lb medicine ball'
     };
 
     // Rotating home sessions, each about 30 minutes. `gear` says what to grab
@@ -1387,8 +1388,9 @@
     const WORKOUTS = [
         {
             name: 'Kettlebell Power',
+            short: 'Kettlebell',
             focus: 'Hips, legs and the pull you paddle with',
-            equipment: ['kettlebell', 'mat'],
+            equipment: ['kettlebell', 'medball', 'mat'],
             exercises: [
                 { name: 'Halos (warm-up)', sets: '2 x 8 each way', gear: '10-15 lb bell' },
                 { name: 'Kettlebell swings', sets: '4 x 15', gear: '25 lb bell' },
@@ -1396,11 +1398,13 @@
                 { name: 'Single-arm row', sets: '3 x 10 / side', gear: '25 lb bell' },
                 { name: 'Half-kneeling press', sets: '3 x 8 / side', gear: '15-20 lb bell' },
                 { name: 'Turkish get-up', sets: '2 x 3 / side', gear: '10-15 lb bell, mat' },
-                { name: 'Suitcase carry', sets: '3 x 40 steps / side', gear: '25 lb bell' }
+                { name: 'Suitcase carry', sets: '3 x 40 steps / side', gear: '25 lb bell' },
+                { name: 'Med ball slams (finisher)', sets: '3 x 10', gear: '10 lb med ball' }
             ]
         },
         {
             name: 'Steel Mace Flow',
+            short: 'Steel Mace',
             focus: 'Shoulders, grip and rotation for duck dives and turns',
             equipment: ['mace', 'mat'],
             exercises: [
@@ -1416,8 +1420,9 @@
         },
         {
             name: 'Paddle & Core',
+            short: 'Bands & Core',
             focus: 'Back, rear shoulders and a trunk that stays stable on the board',
-            equipment: ['bands', 'ball', 'mat'],
+            equipment: ['bands', 'medball', 'ball', 'mat'],
             exercises: [
                 { name: 'Band pull-aparts (warm-up)', sets: '2 x 15', gear: 'Light band' },
                 { name: 'Anchored band row', sets: '3 x 12', gear: 'Medium band' },
@@ -1426,18 +1431,22 @@
                 { name: 'Ball hamstring curl', sets: '3 x 12', gear: 'Yoga ball, mat' },
                 { name: 'Stir-the-pot plank', sets: '3 x 30 sec', gear: 'Yoga ball' },
                 { name: 'Ball knee tucks', sets: '3 x 10', gear: 'Yoga ball' },
+                { name: 'Med ball Russian twists', sets: '3 x 20', gear: '10 lb med ball' },
+                { name: 'Rotational throws (wall or partner)', sets: '3 x 8 / side', gear: '10 lb med ball' },
                 { name: 'Band lateral walks', sets: '3 x 12 / side', gear: 'Heavy band' }
             ]
         },
         {
             name: 'Mobility & Pop-ups',
+            short: 'Mobility',
             focus: 'Loose hips and shoulders, quick to your feet',
-            equipment: ['mat', 'light', 'ball'],
+            equipment: ['mat', 'light', 'medball', 'ball'],
             exercises: [
                 { name: 'Sun salutations (warm-up)', sets: '5 rounds', gear: 'Mat' },
                 { name: 'Y-T-W raises', sets: '3 x 12', gear: '2 lb each hand, on ball' },
                 { name: 'External rotations', sets: '3 x 15 / side', gear: '2 lb weight' },
                 { name: 'Pop-up drill', sets: '3 x 8', gear: 'Mat' },
+                { name: 'Med ball overhead squat', sets: '2 x 12', gear: '10 lb med ball' },
                 { name: '90/90 hip switches', sets: '2 x 10', gear: 'Mat' },
                 { name: 'Open books', sets: '2 x 10 / side', gear: 'Mat' },
                 { name: 'Ball back extension', sets: '2 x 60 sec', gear: 'Yoga ball' },
@@ -1446,22 +1455,45 @@
         }
     ];
 
-    // Taps on "Next workout" step forward from the day's default session.
-    let workoutOffset = 0;
+    // The day's suggested session rotates; tapping a tab overrides it until
+    // the next page load.
+    let selectedWorkout = null;
+
+    function todaysWorkoutIndex() {
+        return getMorningDayIndex() % WORKOUTS.length;
+    }
 
     function pickWorkout() {
-        return WORKOUTS[(getMorningDayIndex() + workoutOffset) % WORKOUTS.length];
+        const index = selectedWorkout === null ? todaysWorkoutIndex() : selectedWorkout;
+        return WORKOUTS[index];
     }
 
     function renderWorkout() {
         const card = document.getElementById('gym-card');
         if (!card) return;
         const workout = pickWorkout();
+        const todayIndex = todaysWorkoutIndex();
         const isGymDay = state.recommendation && state.recommendation.activity === 'HIT THE GYM';
 
         card.classList.toggle('gym-day', !!isGymDay);
         document.getElementById('gym-call').textContent = isGymDay ? "TODAY'S CALL" : 'ANY DAY';
-        document.getElementById('gym-workout-name').textContent = workout.name;
+
+        const tabsEl = document.getElementById('gym-tabs');
+        tabsEl.innerHTML = '';
+        WORKOUTS.forEach((w, i) => {
+            const tab = document.createElement('button');
+            tab.type = 'button';
+            tab.className = 'workout-tab';
+            if (w === workout) tab.classList.add('active');
+            if (i === todayIndex) tab.classList.add('today');
+            tab.textContent = w.short || w.name;
+            tab.title = i === todayIndex ? `${w.name} (today's pick)` : w.name;
+            tab.addEventListener('click', () => selectWorkout(i));
+            tabsEl.appendChild(tab);
+        });
+
+        document.getElementById('gym-workout-name').textContent =
+            workout.name + (WORKOUTS[todayIndex] === workout ? ' · today' : '');
         document.getElementById('gym-workout-focus').textContent = workout.focus;
 
         const gearEl = document.getElementById('gym-equipment');
@@ -1511,8 +1543,8 @@
         }
     }
 
-    function nextWorkout() {
-        workoutOffset = (workoutOffset + 1) % WORKOUTS.length;
+    function selectWorkout(index) {
+        selectedWorkout = index;
         renderWorkout();
     }
 
@@ -2597,7 +2629,7 @@
     // ============================================
     // Event Handlers
     // ============================================
-    window.nextWorkout = nextWorkout;
+    window.selectWorkout = selectWorkout;
 
     window.refreshData = function() {
         loadAllData();

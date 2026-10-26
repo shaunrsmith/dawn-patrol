@@ -692,21 +692,40 @@ body {
     font-weight: 600;
 }
 
-.workout-swap-btn {
-    margin-top: 12px;
-    width: 100%;
-    padding: 8px;
-    font-size: 13px;
+.workout-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.workout-tab {
+    padding: 7px 4px;
+    font-size: 11px;
     font-weight: 600;
+    line-height: 1.2;
     color: var(--text-secondary);
     background: transparent;
     border: 1px solid var(--border-color);
     border-radius: 8px;
     cursor: pointer;
+    position: relative;
 }
 
-.workout-swap-btn:hover {
+.workout-tab.today::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent-gold);
+}
+
+.workout-tab.active {
     color: var(--text-primary);
+    background: rgba(74, 144, 217, 0.15);
     border-color: var(--accent-blue);
 }
 
